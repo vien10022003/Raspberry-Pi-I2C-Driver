@@ -141,7 +141,6 @@ void spawn_food(void) {
 
 DEFINE_SPINLOCK(snake_lock);
 void init_snake(void) {
-    spin_lock(&snake_lock);
     oled_clear();
     snake_size = 4; // Kích thước ban đầu của rắn
     snake_dir = RIGHT; // Hướng di chuyển ban đầu
@@ -150,7 +149,6 @@ void init_snake(void) {
     snake[0].y = 0; // Vị trí đầu rắn
     spawn_food();
     oled_draw_block(snake_food.x, snake_food.y);
-    spin_unlock(&snake_lock);
 }
 
 bool check_collision(void) {
@@ -247,7 +245,11 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
                     case 1:   printk(KERN_INFO "Special key: ESC\n"); break;
                     case 14:  printk(KERN_INFO "Special key: BACKSPACE\n"); break;
                     case 15:  printk(KERN_INFO "Special key: TAB\n"); break;
-                    case 28:  init_snake(); break; //ENTER
+                    case 28:  
+                        spin_lock(&snake_lock);
+                        init_snake(); 
+                        spin_unlock(&snake_lock);
+                        break; //ENTER
                     case 29:  init_snake(); break; //LEFT CTRL
                     case 42:  printk(KERN_INFO "Special key: LEFT SHIFT\n"); break;
                     case 54:  printk(KERN_INFO "Special key: RIGHT SHIFT\n"); break;
