@@ -143,8 +143,8 @@ void init_snake(void) {
     snake_size = 4; // Kích thước ban đầu của rắn
     snake_dir = RIGHT; // Hướng di chuyển ban đầu
     stop_game = false;
-    snake[0].x = 0; // Vị trí đầu rắn
-    snake[0].y = 0; // Vị trí đầu rắn
+    snake[0].x = 124; // Vị trí đầu rắn
+    snake[0].y = 60; // Vị trí đầu rắn
     spawn_food();
     oled_draw_block(snake_food.x, snake_food.y);
 }
