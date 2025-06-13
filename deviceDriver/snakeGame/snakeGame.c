@@ -12,6 +12,9 @@ MODULE_AUTHOR("To Vien");
 MODULE_DESCRIPTION("Kernel module lắng nghe phím bấm");
 MODULE_VERSION("1.0");
 
+
+extern void SSD1306_Write(bool is_cmd, unsigned char data);
+
 //----------------------------------------------------------------------------------
 
 #define MAX_LENGTH 100
@@ -140,7 +143,6 @@ static struct timer_list game_timer;
 //----------------------------------------------------------------------------------
 
 
-extern void SSD1306_Write(bool is_cmd, unsigned char data);
 
 static int keyboard_notify(struct notifier_block *nblock, unsigned long code, void *_param)
 {
@@ -206,7 +208,7 @@ static struct notifier_block keyboard_notifier_block = {
 static int __init keyboard_driver_init(void)
 {
     // Khởi tạo timer vòng lặp
-    timer_setup(&game_timer, gameStep, 0);
+    timer_setup(&game_timer, game_step, 0);
     mod_timer(&game_timer, jiffies + msecs_to_jiffies(500));
     // Tiếp tục init
 
