@@ -69,7 +69,7 @@ static int I2C_Read(unsigned char *out_buf, unsigned int len)
 **      data   -> data to be written
 ** 
 */
-static void SSD1306_Write(bool is_cmd, unsigned char data)
+void SSD1306_Write(bool is_cmd, unsigned char data)
 {
     unsigned char buf[2] = {0};
     int ret;
