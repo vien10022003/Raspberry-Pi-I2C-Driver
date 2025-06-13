@@ -108,6 +108,8 @@ static void SSD1306_Write(bool is_cmd, unsigned char data)
     ret = I2C_Write(buf, 2);
 }
 
+EXPORT_SYMBOL(SSD1306_Write);
+
 
 /*
 ** This function sends the commands that need to used to Initialize the OLED.
