@@ -143,8 +143,8 @@ void init_snake(void) {
     snake_size = 4; // Kích thước ban đầu của rắn
     snake_dir = RIGHT; // Hướng di chuyển ban đầu
     stop_game = false;
-    snake[0].x = 124; // Vị trí đầu rắn
-    snake[0].y = 60; // Vị trí đầu rắn
+    snake[0].x = 0; // Vị trí đầu rắn
+    snake[0].y = 0; // Vị trí đầu rắn
     spawn_food();
     oled_draw_block(snake_food.x, snake_food.y);
 }
@@ -236,10 +236,10 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
             else {
                 // Các phím đặc biệt
                 switch (param->value) {
-                    case 103: if (snake_dir != UP) snake_dir = DOWN; break; //down
-                    case 108: if (snake_dir != DOWN) snake_dir = UP; break; //up
-                    case 105: if (snake_dir != LEFT) snake_dir = RIGHT; break; //right
-                    case 106: if (snake_dir != RIGHT) snake_dir = LEFT; break; //left
+                    case 103: if (snake_dir != DOWN) snake_dir = UP; break; //up
+                    case 108: if (snake_dir != UP) snake_dir = DOWN; break; //down
+                    case 105: if (snake_dir != RIGHT) snake_dir = LEFT; break; //left
+                    case 106: if (snake_dir != LEFT) snake_dir = RIGHT; break; //right
                     case 1:   printk(KERN_INFO "Special key: ESC\n"); break;
                     case 14:  printk(KERN_INFO "Special key: BACKSPACE\n"); break;
                     case 15:  printk(KERN_INFO "Special key: TAB\n"); break;
