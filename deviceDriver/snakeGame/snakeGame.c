@@ -142,6 +142,13 @@ static void game_step(struct timer_list *t) {
     oled_draw_block(snake_food.x, snake_food.y);
     mod_timer(&game_timer, jiffies + msecs_to_jiffies(500)); // Lặp lại sau 500ms
 }
+
+static void test_timer(struct timer_list *t) {
+    pr_info("Timer test-------------: %lu\n", jiffies);
+    SSD1306_Write(false, 0x00);
+    mod_timer(&game_timer, jiffies + msecs_to_jiffies(500)); // Lặp lại sau 500ms
+}
+
 //----------------------------------------------------------------------------------
 
 
@@ -210,7 +217,7 @@ static struct notifier_block keyboard_notifier_block = {
 static int __init keyboard_driver_init(void)
 {
     // Khởi tạo timer vòng lặp
-    timer_setup(&game_timer, game_step, 0);
+    timer_setup(&game_timer, test_timer, 0);
     mod_timer(&game_timer, jiffies + msecs_to_jiffies(500));
     // Tiếp tục init
 
