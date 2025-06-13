@@ -10,6 +10,8 @@ MODULE_AUTHOR("To Vien");
 MODULE_DESCRIPTION("Kernel module lắng nghe phím bấm");
 MODULE_VERSION("1.0");
 
+extern void SSD1306_Write(bool is_cmd, unsigned char data);
+
 static int keyboard_notify(struct notifier_block *nblock, unsigned long code, void *_param)
 {
     struct keyboard_notifier_param *param = _param;
@@ -19,7 +21,7 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
         if (param->down) {
             printk(KERN_INFO "Key pressed: scancode = %d, keycode = %d\n", 
                    param->value, param->value);
-            
+            SSD1306_Write(false, 0x00);
             // In ra ký tự tương ứng nếu là phím chữ cái/số
             if (param->value >= 2 && param->value <= 11) {
                 // Phím số 1-0
