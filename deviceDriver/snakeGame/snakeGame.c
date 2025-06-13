@@ -25,7 +25,7 @@ static struct delayed_work game_work;
 static bool stop_game = false;
 volatile bool should_restart_snake = false;
 
-#define MAX_LENGTH 100
+#define MAX_LENGTH 10
 #define OLED_WIDTH 128
 #define OLED_HEIGHT 64
 #define ITEM_SIZE 8
