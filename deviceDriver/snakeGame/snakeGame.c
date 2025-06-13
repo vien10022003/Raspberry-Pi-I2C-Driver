@@ -117,7 +117,7 @@ bool check_collision(void) {
 }
 
 
-void game_step(void) {
+static void game_step(struct timer_list *t) {
     update_snake_position();
 
     if (snake[0].x == snake_food.x && snake[0].y == snake_food.y) {
@@ -138,6 +138,7 @@ void game_step(void) {
     for (int i = 0; i < snake_size; i++)
         oled_draw_block(snake[i].x, snake[i].y);
     oled_draw_block(snake_food.x, snake_food.y);
+    mod_timer(&game_timer, jiffies + msecs_to_jiffies(500)); // Lặp lại sau 500ms
 }
 static struct timer_list game_timer;
 //----------------------------------------------------------------------------------
