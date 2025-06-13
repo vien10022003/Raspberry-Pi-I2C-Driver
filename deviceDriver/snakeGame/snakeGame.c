@@ -52,6 +52,8 @@ void init_snake(void) {
     stop_game = false;
     snake[0].x = 0; // Vị trí đầu rắn
     snake[0].y = 0; // Vị trí đầu rắn
+    spawn_food();
+    oled_draw_block(snake_food.x, snake_food.y);
 }
 
 void oled_clear(void) {
@@ -232,14 +234,14 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
             else {
                 // Các phím đặc biệt
                 switch (param->value) {
-                    case 103: if (snake_dir != DOWN) snake_dir = UP; break; //up
-                    case 108: if (snake_dir != UP) snake_dir = DOWN; break; //down
-                    case 105: if (snake_dir != RIGHT) snake_dir = LEFT; break; //left
-                    case 106: if (snake_dir != LEFT) snake_dir = RIGHT; break; //right
+                    case 103: if (snake_dir != UP) snake_dir = DOWN; break; //down
+                    case 108: if (snake_dir != DOWN) snake_dir = UP; break; //up
+                    case 105: if (snake_dir != LEFT) snake_dir = RIGHT; break; //right
+                    case 106: if (snake_dir != RIGHT) snake_dir = LEFT; break; //left
                     case 1:   printk(KERN_INFO "Special key: ESC\n"); break;
                     case 14:  printk(KERN_INFO "Special key: BACKSPACE\n"); break;
                     case 15:  printk(KERN_INFO "Special key: TAB\n"); break;
-                    case 28:  printk(KERN_INFO "Special key: ENTER\n"); break;
+                    case 28:  init_snake(); break; //ENTER
                     case 29:  init_snake(); break; //LEFT CTRL
                     case 42:  printk(KERN_INFO "Special key: LEFT SHIFT\n"); break;
                     case 54:  printk(KERN_INFO "Special key: RIGHT SHIFT\n"); break;
@@ -267,7 +269,7 @@ static int __init keyboard_driver_init(void)
     // Tiếp tục init
     oled_clear();
     init_snake();
-    
+
     int ret;
     
     printk(KERN_INFO "Keyboard driver: Loading module\n");
