@@ -23,6 +23,7 @@ static struct workqueue_struct *game_wq;
 static struct delayed_work game_work;
 // Flag để dừng work khi cần thiết
 static bool stop_game = false;
+volatile bool should_restart_snake = false;
 
 #define MAX_LENGTH 100
 #define OLED_WIDTH 128
@@ -139,7 +140,6 @@ void spawn_food(void) {
     } while (i != snake_size);
 }
 
-DEFINE_SPINLOCK(snake_lock);
 void init_snake(void) {
     oled_clear();
     snake_size = 4; // Kích thước ban đầu của rắn
@@ -167,6 +167,11 @@ bool check_collision(void) {
 
 
 static void game_step(void) {
+    if (should_restart_snake) {
+        init_snake();
+        should_restart_snake = false;
+    }
+
     update_snake_position();
     struct game_item snake_tail = snake[snake_size - 1]; // Lưu vị trí đuôi rắn để xóa sau
 
@@ -245,12 +250,8 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
                     case 1:   printk(KERN_INFO "Special key: ESC\n"); break;
                     case 14:  printk(KERN_INFO "Special key: BACKSPACE\n"); break;
                     case 15:  printk(KERN_INFO "Special key: TAB\n"); break;
-                    case 28:  
-                        spin_lock(&snake_lock);
-                        init_snake(); 
-                        spin_unlock(&snake_lock);
-                        break; //ENTER
-                    case 29:  init_snake(); break; //LEFT CTRL
+                    case 28:  should_restart_snake = true; break; //ENTER
+                    case 29:  should_restart_snake = true; break; //LEFT CTRL
                     case 42:  printk(KERN_INFO "Special key: LEFT SHIFT\n"); break;
                     case 54:  printk(KERN_INFO "Special key: RIGHT SHIFT\n"); break;
                     case 56:  printk(KERN_INFO "Special key: LEFT ALT\n"); break;
