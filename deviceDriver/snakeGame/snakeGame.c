@@ -188,8 +188,8 @@ static void game_step(void) {
 static void game_work_handler(struct work_struct *work)
 {
     if (!stop_game) {
-        // game_step();
-        SSD1306_Write(false, 0x00);
+        game_step();
+        // SSD1306_Write(false, 0x00);
         queue_delayed_work(game_wq, &game_work, msecs_to_jiffies(500));
     }
 }
@@ -265,7 +265,9 @@ static int __init keyboard_driver_init(void)
     INIT_DELAYED_WORK(&game_work, game_work_handler);
     queue_delayed_work(game_wq, &game_work, msecs_to_jiffies(500));
     // Tiếp tục init
-
+    oled_clear();
+    init_snake();
+    
     int ret;
     
     printk(KERN_INFO "Keyboard driver: Loading module\n");
