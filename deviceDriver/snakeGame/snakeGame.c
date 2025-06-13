@@ -167,10 +167,10 @@ bool check_collision(void) {
 
 
 static void game_step(void) {
-    if (should_restart_snake) {
-        init_snake();
-        should_restart_snake = false;
-    }
+    // if (should_restart_snake) {
+    //     init_snake();
+    //     should_restart_snake = false;
+    // }
 
     update_snake_position();
     struct game_item snake_tail = snake[snake_size - 1]; // Lưu vị trí đuôi rắn để xóa sau
