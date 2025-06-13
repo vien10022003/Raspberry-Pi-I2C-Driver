@@ -5,7 +5,8 @@
 #include <linux/notifier.h>
 #include <linux/input.h>
 
-#include <linux/timer.h>
+#include <linux/workqueue.h>
+#include <linux/delay.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("To Vien");
@@ -17,7 +18,11 @@ extern void SSD1306_Write(bool is_cmd, unsigned char data);
 
 //----------------------------------------------------------------------------------
 
-static struct timer_list game_timer;
+//timer
+static struct workqueue_struct *game_wq;
+static struct delayed_work game_work;
+// Flag để dừng work khi cần thiết
+static bool stop_game = false;
 
 #define MAX_LENGTH 100
 #define OLED_WIDTH 128
@@ -119,7 +124,7 @@ bool check_collision(void) {
 }
 
 
-static void game_step(struct timer_list *t) {
+static void game_step(void) {
     update_snake_position();
 
     if (snake[0].x == snake_food.x && snake[0].y == snake_food.y) {
@@ -140,15 +145,18 @@ static void game_step(struct timer_list *t) {
     for (int i = 0; i < snake_size; i++)
         oled_draw_block(snake[i].x, snake[i].y);
     oled_draw_block(snake_food.x, snake_food.y);
-    mod_timer(&game_timer, jiffies + msecs_to_jiffies(500)); // Lặp lại sau 500ms
 }
 
-static void test_timer(struct timer_list *t) {
-    pr_info("Timer test-------------: %lu\n", jiffies);
-    SSD1306_Write(false, 0x00);
-    mod_timer(&game_timer, jiffies + msecs_to_jiffies(500)); // Lặp lại sau 500ms
-}
 
+//timer
+static void game_work_handler(struct work_struct *work)
+{
+    if (!stop_game) {
+        // game_step();
+        SSD1306_Write(false, 0x00);
+        queue_delayed_work(game_wq, &game_work, msecs_to_jiffies(500));
+    }
+}
 //----------------------------------------------------------------------------------
 
 
@@ -217,8 +225,9 @@ static struct notifier_block keyboard_notifier_block = {
 static int __init keyboard_driver_init(void)
 {
     // Khởi tạo timer vòng lặp
-    timer_setup(&game_timer, test_timer, 0);
-    mod_timer(&game_timer, jiffies + msecs_to_jiffies(500));
+    game_wq = create_singlethread_workqueue("game_workqueue");
+    INIT_DELAYED_WORK(&game_work, game_work_handler);
+    queue_delayed_work(game_wq, &game_work, msecs_to_jiffies(500));
     // Tiếp tục init
 
     int ret;
@@ -245,8 +254,10 @@ static void __exit keyboard_driver_exit(void)
     unregister_keyboard_notifier(&keyboard_notifier_block);
 
     // Hủy Timer
-    del_timer_sync(&game_timer);
-    
+    stop_game = true;
+    cancel_delayed_work_sync(&game_work);
+    destroy_workqueue(game_wq);
+
     printk(KERN_INFO "Keyboard driver: Module unloaded successfully\n");
 }
 
