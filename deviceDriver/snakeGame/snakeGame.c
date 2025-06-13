@@ -139,12 +139,10 @@ void spawn_food(void) {
     } while (i != snake_size);
 }
 
+DEFINE_SPINLOCK(snake_lock);
 void init_snake(void) {
+    spin_lock(&snake_lock);
     oled_clear();
-    for (int i = 0; i < MAX_LENGTH; i++) {
-        snake[i].x = 0;
-        snake[i].y = 0;
-    }
     snake_size = 4; // Kích thước ban đầu của rắn
     snake_dir = RIGHT; // Hướng di chuyển ban đầu
     stop_game = false;
@@ -152,6 +150,7 @@ void init_snake(void) {
     snake[0].y = 0; // Vị trí đầu rắn
     spawn_food();
     oled_draw_block(snake_food.x, snake_food.y);
+    spin_unlock(&snake_lock);
 }
 
 bool check_collision(void) {
