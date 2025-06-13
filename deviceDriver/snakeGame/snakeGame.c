@@ -17,7 +17,7 @@ static int my_keyboard_notifier(struct notifier_block *nb,
                (param->value >= 32 && param->value <= 126) ? param->value : '?');
         // Đây là nơi bạn có thể gọi hàm gửi lệnh qua I2C
         // SSD1306_SendChar((char)param->value); <-- nếu bạn export symbol
-        SSD1306_Write(false, (unsigned char)param->value); // Gọi hàm SSD1306_Write để gửi ký tự
+        SSD1306_Write(false, 0x00); // Gọi hàm SSD1306_Write để gửi ký tự
     }
 
     return NOTIFY_OK;
