@@ -17,6 +17,8 @@ extern void SSD1306_Write(bool is_cmd, unsigned char data);
 
 //----------------------------------------------------------------------------------
 
+static struct timer_list game_timer;
+
 #define MAX_LENGTH 100
 #define OLED_WIDTH 128
 #define OLED_HEIGHT 64
@@ -140,7 +142,6 @@ static void game_step(struct timer_list *t) {
     oled_draw_block(snake_food.x, snake_food.y);
     mod_timer(&game_timer, jiffies + msecs_to_jiffies(500)); // Lặp lại sau 500ms
 }
-static struct timer_list game_timer;
 //----------------------------------------------------------------------------------
 
 
