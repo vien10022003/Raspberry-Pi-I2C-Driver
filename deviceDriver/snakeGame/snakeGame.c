@@ -140,6 +140,11 @@ void spawn_food(void) {
 }
 
 void init_snake(void) {
+    oled_clear();
+    for (int i = 0; i < MAX_LENGTH; i++) {
+        snake[i].x = 0;
+        snake[i].y = 0;
+    }
     snake_size = 4; // Kích thước ban đầu của rắn
     snake_dir = RIGHT; // Hướng di chuyển ban đầu
     stop_game = false;
@@ -269,7 +274,6 @@ static int __init keyboard_driver_init(void)
     INIT_DELAYED_WORK(&game_work, game_work_handler);
     queue_delayed_work(game_wq, &game_work, msecs_to_jiffies(500));
     // Tiếp tục init
-    oled_clear();
     init_snake();
 
     int ret;
