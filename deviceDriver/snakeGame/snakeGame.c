@@ -46,15 +46,7 @@ static struct game_item snake_food;
 static unsigned int snake_size = 4;
 static enum Direction snake_dir = RIGHT;
 
-void init_snake(void) {
-    snake_size = 4; // Kích thước ban đầu của rắn
-    snake_dir = RIGHT; // Hướng di chuyển ban đầu
-    stop_game = false;
-    snake[0].x = 0; // Vị trí đầu rắn
-    snake[0].y = 0; // Vị trí đầu rắn
-    spawn_food();
-    oled_draw_block(snake_food.x, snake_food.y);
-}
+
 
 void oled_clear(void) {
     for (int i = 0; i < 8; i++) {
@@ -145,6 +137,16 @@ void spawn_food(void) {
                 break;
         }
     } while (i != snake_size);
+}
+
+void init_snake(void) {
+    snake_size = 4; // Kích thước ban đầu của rắn
+    snake_dir = RIGHT; // Hướng di chuyển ban đầu
+    stop_game = false;
+    snake[0].x = 0; // Vị trí đầu rắn
+    snake[0].y = 0; // Vị trí đầu rắn
+    spawn_food();
+    oled_draw_block(snake_food.x, snake_food.y);
 }
 
 bool check_collision(void) {
