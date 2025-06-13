@@ -27,7 +27,7 @@ static bool stop_game = false;
 #define MAX_LENGTH 100
 #define OLED_WIDTH 128
 #define OLED_HEIGHT 64
-#define ITEM_SIZE 4
+#define ITEM_SIZE 8
 
 enum Direction {
     LEFT = 0,
@@ -46,6 +46,14 @@ static struct game_item snake_food;
 static unsigned int snake_size = 4;
 static enum Direction snake_dir = RIGHT;
 
+void init_snake(void) {
+    snake_size = 4; // Kích thước ban đầu của rắn
+    snake_dir = RIGHT; // Hướng di chuyển ban đầu
+    stop_game = false;
+    snake[0].x = 0; // Vị trí đầu rắn
+    snake[0].y = 0; // Vị trí đầu rắn
+}
+
 void oled_clear(void) {
     for (int i = 0; i < 8; i++) {
         SSD1306_Write(true, 0xB0 + i); // set page
@@ -59,25 +67,53 @@ void oled_clear(void) {
 
 void oled_draw_block(unsigned int x, unsigned int y)
 {
-    int page, i;
+    int i;
 
-    // SSD1306 chia màn hình thành các page 8 pixel chiều cao (0–7)
-    // Mỗi page chứa 128 byte ứng với các cột pixel
-    page = y / 8;                         // Xác định page
-    unsigned char bit_mask = 0x0F << (y % 8); // Vẽ 4 pixel dọc bắt đầu tại y
+    if (x >= 128 || y >= 64) return; // tránh vẽ ngoài màn hình
 
-    for (i = 0; i < 4; i++) {
-        if ((x + i) >= 128) continue; // tránh vẽ ngoài màn hình
+    // Tính toán page (SSD1306 có 8 page, mỗi page là 8 pixel theo chiều dọc)
+    int page = y / 8;
 
-        // Set vị trí
-        SSD1306_Write(true, 0xB0 + page);                  // set page address
-        SSD1306_Write(true, 0x00 + ((x + i) & 0x0F));      // set lower col
+    // Đặt địa chỉ page
+    SSD1306_Write(true, 0xB0 + page);
+
+    for (i = 0; i < 8; i++) {
+        if ((x + i) >= 128) continue; // tránh vẽ ngoài màn hình theo chiều ngang
+
+        // Đặt vị trí cột
+        SSD1306_Write(true, 0x00 + ((x + i) & 0x0F));        // set lower col
         SSD1306_Write(true, 0x10 + (((x + i) >> 4) & 0x0F)); // set higher col
 
-        // Gửi data
-        SSD1306_Write(false, bit_mask); // Vẽ pixel block 4 dòng
+        // Gửi 1 byte với toàn bộ 8 pixel sáng (vì là block 8x8)
+        SSD1306_Write(false, 0xFF);
     }
 }
+
+void oled_clear_block(unsigned int x, unsigned int y)
+{
+    int i;
+
+    if (x >= 128 || y >= 64) return; // tránh vẽ ngoài màn hình
+
+    // Tính toán page (mỗi page cao 8 pixel)
+    int page = y / 8;
+
+    // Đặt địa chỉ page
+    SSD1306_Write(true, 0xB0 + page);
+
+    for (i = 0; i < 8; i++) {
+        if ((x + i) >= 128) continue; // tránh vẽ ngoài màn hình theo chiều ngang
+
+        // Đặt vị trí cột
+        SSD1306_Write(true, 0x00 + ((x + i) & 0x0F));        // set lower col
+        SSD1306_Write(true, 0x10 + (((x + i) >> 4) & 0x0F)); // set higher col
+
+        // Gửi 1 byte với tất cả pixel tắt
+        SSD1306_Write(false, 0x00);
+    }
+}
+
+
 
 void update_snake_position(void) {
     for (int i = snake_size - 1; i > 0; i--)
@@ -126,25 +162,25 @@ bool check_collision(void) {
 
 static void game_step(void) {
     update_snake_position();
+    struct game_item snake_tail = snake[snake_size - 1]; // Lưu vị trí đuôi rắn để xóa sau
 
     if (snake[0].x == snake_food.x && snake[0].y == snake_food.y) {
         if (snake_size < MAX_LENGTH)
             snake_size++;
         spawn_food();
+        oled_draw_block(snake_food.x, snake_food.y);
+    } else {
+        // Xóa đuôi rắn
+        oled_clear_block(snake_tail.x, snake_tail.y);
     }
 
     if (check_collision()) {
         oled_clear();
-        // Bạn có thể in ra chữ "Game Over" ở đây
-        snake_size = 4;
-        snake_dir = RIGHT;
-        spawn_food();
+        stop_game = true;
+        printk(KERN_INFO "Game Over! Your score: %u\n", snake_size);
     }
 
-    oled_clear();
-    for (int i = 0; i < snake_size; i++)
-        oled_draw_block(snake[i].x, snake[i].y);
-    oled_draw_block(snake_food.x, snake_food.y);
+    oled_draw_block(snake[0].x, snake[0].y);
 }
 
 
@@ -196,15 +232,15 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
             else {
                 // Các phím đặc biệt
                 switch (param->value) {
-                    case 103: if (snake_dir != DOWN) snake_dir = UP; break;
-                    case 108: if (snake_dir != UP) snake_dir = DOWN; break;
-                    case 105: if (snake_dir != RIGHT) snake_dir = LEFT; break;
-                    case 106: if (snake_dir != LEFT) snake_dir = RIGHT; break;
+                    case 103: if (snake_dir != DOWN) snake_dir = UP; break; //up
+                    case 108: if (snake_dir != UP) snake_dir = DOWN; break; //down
+                    case 105: if (snake_dir != RIGHT) snake_dir = LEFT; break; //left
+                    case 106: if (snake_dir != LEFT) snake_dir = RIGHT; break; //right
                     case 1:   printk(KERN_INFO "Special key: ESC\n"); break;
                     case 14:  printk(KERN_INFO "Special key: BACKSPACE\n"); break;
                     case 15:  printk(KERN_INFO "Special key: TAB\n"); break;
                     case 28:  printk(KERN_INFO "Special key: ENTER\n"); break;
-                    case 29:  printk(KERN_INFO "Special key: LEFT CTRL\n"); break;
+                    case 29:  init_snake(); break; //LEFT CTRL
                     case 42:  printk(KERN_INFO "Special key: LEFT SHIFT\n"); break;
                     case 54:  printk(KERN_INFO "Special key: RIGHT SHIFT\n"); break;
                     case 56:  printk(KERN_INFO "Special key: LEFT ALT\n"); break;
