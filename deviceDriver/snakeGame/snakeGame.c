@@ -122,7 +122,7 @@ void update_snake_position(void)
     for (int i = snake_size - 1; i > 0; i--)
         snake[i] = snake[i - 1];
 
-    switch (atomic_read(&command))
+    switch (command)
     {
     case 1:
         snake[0].x -= ITEM_SIZE;
