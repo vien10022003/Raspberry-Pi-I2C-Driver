@@ -1,0 +1,1 @@
+cmd_/home/pi/Desktop/driver-OLED-SSD-1306/Raspberry-Pi-I2C-Driver/deviceDriver/snakeGame/snakeGame.mod := printf '%s\n'   snakeGame.o | awk '!x[$$0]++ { print("/home/pi/Desktop/driver-OLED-SSD-1306/Raspberry-Pi-I2C-Driver/deviceDriver/snakeGame/"$$0) }' > /home/pi/Desktop/driver-OLED-SSD-1306/Raspberry-Pi-I2C-Driver/deviceDriver/snakeGame/snakeGame.mod

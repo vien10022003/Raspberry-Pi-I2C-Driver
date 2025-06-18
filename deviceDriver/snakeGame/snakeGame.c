@@ -151,6 +151,21 @@ void oled_draw_digit(int x, int y, uint8_t digit)
     }
 }
 
+
+void oled_clear(void)
+{
+    for (int i = 0; i < 8; i++)
+    {
+        SSD1306_Write(true, 0xB0 + i); // set page
+        SSD1306_Write(true, 0x00);     // lower column
+        SSD1306_Write(true, 0x10);     // higher column
+        for (int j = 0; j < 128; j++)
+        {
+            SSD1306_Write(false, 0x00); // clear pixel
+        }
+    }
+}
+
 // Hàm hiển thị điểm số giữa màn hình
 void oled_show_score(int snake_size)
 {
@@ -180,28 +195,6 @@ void oled_show_score(int snake_size)
     oled_draw_digit(start_x + 20, start_y, units);
 }
 
-
-void oled_clear(void)
-{
-    for (int i = 0; i < 8; i++)
-    {
-        SSD1306_Write(true, 0xB0 + i); // set page
-        SSD1306_Write(true, 0x00);     // lower column
-        SSD1306_Write(true, 0x10);     // higher column
-        for (int j = 0; j < 128; j++)
-        {
-            SSD1306_Write(false, 0x00); // clear pixel
-        }
-    }
-}
-
-// Hàm hiển thị "GAME OVER" và điểm số
-void oled_show_game_over(int snake_size)
-{
-    oled_clear();
-    
-    oled_show_score(snake_size);
-}
 
 void oled_draw_block(unsigned int x, unsigned int y)
 {
@@ -336,7 +329,7 @@ static void game_step(void)
 
     if (check_collision())
     {
-        oled_show_game_over(snake_size);
+        oled_show_score(snake_size);
         stop_game = true;
         printk(KERN_INFO "Game Over! Your score: %u\n", snake_size);
         return;
