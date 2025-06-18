@@ -1,6 +1,3 @@
-#ifndef __FONT_H__
-#define __FONT_H__
-
 #include <linux/types.h> // Để dùng uint8_t trong kernel
 
 // Font bitmap cho các số 0-9, kích thước 16x12 pixels
