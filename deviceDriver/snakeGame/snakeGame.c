@@ -181,17 +181,18 @@ bool check_collision(void)
     // chạm thân
     for (int i = 1; i < snake_size; i++)
     {
+        printk(KERN_INFO "(%u, %u)", snake[i].x, snake[i].y);
         if (snake[0].x == snake[i].x && snake[0].y == snake[i].y)
             return true;
     }
-
+    printk(KERN_INFO "\n");
     return false;
 }
 
 static void game_step(void)
 {
-    struct game_item snake_tail = snake[snake_size - 1]; // Lưu vị trí đuôi rắn để xóa sau
     update_snake_position();
+    struct game_item snake_tail = snake[snake_size - 1]; // Lưu vị trí đuôi rắn để xóa sau
 
     if (snake[0].x == snake_food.x && snake[0].y == snake_food.y)
     {
