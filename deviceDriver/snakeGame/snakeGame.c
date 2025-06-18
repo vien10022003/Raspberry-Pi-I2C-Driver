@@ -46,7 +46,8 @@ struct game_item
 
 static struct game_item snake[MAX_LENGTH];
 static struct game_item snake_food;
-static unsigned int snake_size = 4;
+static unsigned int INIT_SIZE = 3;
+static unsigned int snake_size = INIT_SIZE; // Kích thước ban đầu của rắn
 static atomic_t command = ATOMIC_INIT(2); // 1= LEFT, 2=RIGHT, 3=UP, 4=DOWN, 5=RESET, 0=NONE
 
 void oled_clear(void)
@@ -122,7 +123,7 @@ void update_snake_position(void)
     for (int i = snake_size - 1; i > 0; i--)
         snake[i] = snake[i - 1];
 
-    switch (command)
+    switch (atomic_read(&command))
     {
     case 1:
         snake[0].x -= ITEM_SIZE;
@@ -163,7 +164,7 @@ void spawn_food(void)
 void init_snake(void)
 {
     oled_clear();
-    snake_size = 4;          // Kích thước ban đầu của rắn
+    snake_size = INIT_SIZE;          // Kích thước ban đầu của rắn
     atomic_set(&command, 2); // Reset command to RIGHT
     stop_game = false;
     snake[0].x = 0; // Vị trí đầu rắn
