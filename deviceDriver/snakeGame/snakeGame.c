@@ -190,9 +190,8 @@ bool check_collision(void)
 
 static void game_step(void)
 {
-
-    update_snake_position();
     struct game_item snake_tail = snake[snake_size - 1]; // Lưu vị trí đuôi rắn để xóa sau
+    update_snake_position();
 
     if (snake[0].x == snake_food.x && snake[0].y == snake_food.y)
     {
