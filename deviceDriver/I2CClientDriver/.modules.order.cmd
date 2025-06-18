@@ -1,1 +1,0 @@
-cmd_/home/pi/Desktop/driver-OLED-SSD-1306/Raspberry-Pi-I2C-Driver/deviceDriver/I2CClientDriver/modules.order := {   echo /home/pi/Desktop/driver-OLED-SSD-1306/Raspberry-Pi-I2C-Driver/deviceDriver/I2CClientDriver/I2CDriver.ko; :; } > /home/pi/Desktop/driver-OLED-SSD-1306/Raspberry-Pi-I2C-Driver/deviceDriver/I2CClientDriver/modules.order

@@ -1,1 +1,0 @@
-cmd_/home/pi/Desktop/driver-OLED-SSD-1306/Raspberry-Pi-I2C-Driver/deviceDriver/I2CClientDriver/I2CDriver.mod := printf '%s\n'   I2CDriver.o | awk '!x[$$0]++ { print("/home/pi/Desktop/driver-OLED-SSD-1306/Raspberry-Pi-I2C-Driver/deviceDriver/I2CClientDriver/"$$0) }' > /home/pi/Desktop/driver-OLED-SSD-1306/Raspberry-Pi-I2C-Driver/deviceDriver/I2CClientDriver/I2CDriver.mod
