@@ -163,7 +163,7 @@ void spawn_food(void)
 void init_snake(void)
 {
     oled_clear();
-    snake_size = 4; // Kích thước ban đầu của rắn
+    snake_size = 4;          // Kích thước ban đầu của rắn
     atomic_set(&command, 2); // Reset command to RIGHT
     stop_game = false;
     snake[0].x = 0; // Vị trí đầu rắn
@@ -222,17 +222,15 @@ static void game_work_handler(struct work_struct *work)
 {
     if (!stop_game)
     {
-
-        if (atomic_read(&command) == 5)
-        { // Reset game
+        if (atomic_read(&command) == 5) // Reset game
+        {
             init_snake();
             queue_delayed_work(game_wq, &game_work, msecs_to_jiffies(3000));
             return;
         }
         game_step();
-        // SSD1306_Write(false, 0x00);
-        queue_delayed_work(game_wq, &game_work, msecs_to_jiffies(700));
     }
+    queue_delayed_work(game_wq, &game_work, msecs_to_jiffies(700));
 }
 //----------------------------------------------------------------------------------
 
@@ -306,10 +304,12 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
                     break;
                 case 28:
                     atomic_set(&command, 5);
-                    break; // ENTER
+                    stop_game = false; // Reset game
+                    break;             // ENTER
                 case 29:
                     atomic_set(&command, 5);
-                    break; // LEFT CTRL
+                    stop_game = false; // Reset game
+                    break;             // LEFT CTRL
                 case 42:
                     printk(KERN_INFO "Special key: LEFT SHIFT\n");
                     break;
