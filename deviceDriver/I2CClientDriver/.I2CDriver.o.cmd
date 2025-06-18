@@ -1257,3 +1257,4 @@ deps_/home/pi/Desktop/driver-OLED-SSD-1306/Raspberry-Pi-I2C-Driver/deviceDriver/
 /home/pi/Desktop/driver-OLED-SSD-1306/Raspberry-Pi-I2C-Driver/deviceDriver/I2CClientDriver/I2CDriver.o: $(deps_/home/pi/Desktop/driver-OLED-SSD-1306/Raspberry-Pi-I2C-Driver/deviceDriver/I2CClientDriver/I2CDriver.o)
 
 $(deps_/home/pi/Desktop/driver-OLED-SSD-1306/Raspberry-Pi-I2C-Driver/deviceDriver/I2CClientDriver/I2CDriver.o):
+#SYMVER SSD1306_Write 0xe8ca87ce

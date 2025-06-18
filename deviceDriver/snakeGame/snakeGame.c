@@ -25,7 +25,7 @@ static struct delayed_work game_work;
 static bool stop_game = false;
 volatile bool should_restart_snake = false;
 
-#define MAX_LENGTH 10
+#define MAX_LENGTH 50
 #define OLED_WIDTH 128
 #define OLED_HEIGHT 64
 #define ITEM_SIZE 8
@@ -46,9 +46,140 @@ struct game_item
 
 static struct game_item snake[MAX_LENGTH];
 static struct game_item snake_food;
-static unsigned int INIT_SIZE = 3;
-static unsigned int snake_size = INIT_SIZE; // Kích thước ban đầu của rắn
+static int INIT_SIZE = 4;
+static int snake_size; // Kích thước ban đầu của rắn
 static atomic_t command = ATOMIC_INIT(2); // 1= LEFT, 2=RIGHT, 3=UP, 4=DOWN, 5=RESET, 0=NONE
+
+
+// Font bitmap cho các số 0-9, kích thước 16x12 pixels
+// Mỗi số được lưu trữ dưới dạng mảng 24 bytes (16 cột x 12 hàng = 192 bits = 24 bytes)
+// Dữ liệu được tổ chức theo cột, mỗi byte đại diện cho 8 pixel theo chiều dọc
+static const uint8_t font_16x12[10][24] = {
+    // Số 0
+    {
+        0x00, 0x00, 0xF0, 0xFC, 0x0E, 0x07, 0x03, 0x03, 
+        0x03, 0x03, 0x07, 0x0E, 0xFC, 0xF0, 0x00, 0x00,
+        0x00, 0x00, 0x0F, 0x3F, 0x70, 0xE0, 0xC0, 0xC0,
+        0xC0, 0xC0, 0xE0, 0x70, 0x3F, 0x0F, 0x00, 0x00
+    },
+    // Số 1
+    {
+        0x00, 0x00, 0x00, 0x0C, 0x0C, 0x0E, 0xFF, 0xFF,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    },
+    // Số 2
+    {
+        0x00, 0x00, 0x0C, 0x0E, 0x07, 0x03, 0x03, 0x03,
+        0x83, 0xC7, 0xEE, 0x7C, 0x38, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0xE0, 0xF0, 0xF8, 0xDC, 0xCE, 0xC7,
+        0xC3, 0xC1, 0xC0, 0xC0, 0xC0, 0x00, 0x00, 0x00
+    },
+    // Số 3
+    {
+        0x00, 0x00, 0x0C, 0x0E, 0x07, 0x03, 0x83, 0x83,
+        0x83, 0x83, 0xC7, 0xEE, 0x7C, 0x38, 0x00, 0x00,
+        0x00, 0x00, 0x30, 0x70, 0xE0, 0xC0, 0xC1, 0xC1,
+        0xC1, 0xC1, 0xE3, 0x77, 0x3E, 0x1C, 0x00, 0x00
+    },
+    // Số 4
+    {
+        0x00, 0x00, 0x80, 0xC0, 0xE0, 0x70, 0x38, 0x1C,
+        0x0E, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x07, 0x07, 0x06, 0x06, 0x06, 0x06,
+        0x06, 0xFF, 0xFF, 0x06, 0x06, 0x06, 0x00, 0x00
+    },
+    // Số 5
+    {
+        0x00, 0x00, 0xFF, 0xFF, 0xC3, 0xC3, 0xC3, 0xC3,
+        0xC3, 0xC3, 0x83, 0x83, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x31, 0x71, 0xE0, 0xC0, 0xC0, 0xC0,
+        0xC0, 0xC0, 0xE1, 0x71, 0x3F, 0x1F, 0x00, 0x00
+    },
+    // Số 6
+    {
+        0x00, 0x00, 0xF0, 0xFC, 0xCE, 0xC7, 0xC3, 0xC3,
+        0xC3, 0xC3, 0x87, 0x0E, 0x1C, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x1F, 0x3F, 0x71, 0xE0, 0xC0, 0xC0,
+        0xC0, 0xC0, 0xE1, 0x73, 0x3F, 0x1F, 0x00, 0x00
+    },
+    // Số 7
+    {
+        0x00, 0x00, 0x03, 0x03, 0x03, 0x03, 0x03, 0x83,
+        0xE3, 0x7B, 0x1F, 0x0F, 0x03, 0x03, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0xC0, 0xF0, 0x3C, 0x0F,
+        0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    },
+    // Số 8
+    {
+        0x00, 0x00, 0x38, 0x7C, 0xEE, 0xC7, 0x83, 0x83,
+        0x83, 0x83, 0xC7, 0xEE, 0x7C, 0x38, 0x00, 0x00,
+        0x00, 0x00, 0x1C, 0x3E, 0x77, 0xE3, 0xC1, 0xC1,
+        0xC1, 0xC1, 0xE3, 0x77, 0x3E, 0x1C, 0x00, 0x00
+    },
+    // Số 9
+    {
+        0x00, 0x00, 0x78, 0xFC, 0xCE, 0x87, 0x03, 0x03,
+        0x03, 0x03, 0x87, 0xCE, 0xFC, 0xF8, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x38, 0x71, 0xE3, 0xC3, 0xC3,
+        0xC3, 0xC3, 0xE3, 0x73, 0x3F, 0x0F, 0x00, 0x00
+    }
+};
+
+// Hàm hiển thị một ký tự số tại vị trí x, y
+void oled_draw_digit(int x, int y, uint8_t digit)
+{
+    if (digit > 9) return;
+    
+    // Vẽ font 16x12, cần 2 page (mỗi page 8 pixel cao)
+    for (int page = 0; page < 2; page++)
+    {
+        // Đặt page address
+        SSD1306_Write(true, 0xB0 + y/8 + page);
+        
+        // Đặt column address
+        SSD1306_Write(true, 0x00 + (x & 0x0F));        // Lower column
+        SSD1306_Write(true, 0x10 + ((x >> 4) & 0x0F)); // Higher column
+        
+        // Vẽ 16 cột cho digit
+        for (int col = 0; col < 16; col++)
+        {
+            uint8_t data = font_16x12[digit][page * 16 + col];
+            SSD1306_Write(false, data);
+        }
+    }
+}
+
+// Hàm hiển thị điểm số giữa màn hình
+void oled_show_score(int snake_size)
+{
+    // Tính toán điểm số (snake_size có thể trừ đi kích thước ban đầu nếu cần)
+    int score = snake_size;
+    
+    // Đảm bảo score trong khoảng 0-99
+    if (score < 0) score = 0;
+    if (score > 99) score = 99;
+    
+    // Tách thành 2 chữ số
+    uint8_t tens = score / 10;    // Chữ số hàng chục
+    uint8_t units = score % 10;   // Chữ số hàng đơn vị
+    
+    // Tính vị trí giữa màn hình
+    // Màn hình 128x64, 2 số 16x12 + khoảng cách 4 pixel = 36 pixel tổng cộng
+    int start_x = (128 - 36) / 2;  // Vị trí x bắt đầu
+    int start_y = (64 - 12) / 2;   // Vị trí y bắt đầu (giữa màn hình theo chiều dọc)
+    
+    // Xóa màn hình trước khi vẽ
+    oled_clear();
+    
+    // Vẽ chữ số hàng chục
+    oled_draw_digit(start_x, start_y, tens);
+    
+    // Vẽ chữ số hàng đơn vị (cách 20 pixel)
+    oled_draw_digit(start_x + 20, start_y, units);
+}
+
 
 void oled_clear(void)
 {
@@ -62,6 +193,14 @@ void oled_clear(void)
             SSD1306_Write(false, 0x00); // clear pixel
         }
     }
+}
+
+// Hàm hiển thị "GAME OVER" và điểm số
+void oled_show_game_over(int snake_size)
+{
+    oled_clear();
+    
+    oled_show_score(snake_size);
 }
 
 void oled_draw_block(unsigned int x, unsigned int y)
@@ -192,13 +331,25 @@ bool check_collision(void)
 
 static void game_step(void)
 {
+
     update_snake_position();
+
+    if (check_collision())
+    {
+        oled_show_game_over(snake_size);
+        stop_game = true;
+        printk(KERN_INFO "Game Over! Your score: %u\n", snake_size);
+        return;
+    }
+
     struct game_item snake_tail = snake[snake_size - 1]; // Lưu vị trí đuôi rắn để xóa sau
 
     if (snake[0].x == snake_food.x && snake[0].y == snake_food.y)
     {
         if (snake_size < MAX_LENGTH)
             snake_size++;
+        else
+            oled_clear_block(snake_tail.x, snake_tail.y);
         spawn_food();
         oled_draw_block(snake_food.x, snake_food.y);
     }
@@ -206,13 +357,6 @@ static void game_step(void)
     {
         // Xóa đuôi rắn
         oled_clear_block(snake_tail.x, snake_tail.y);
-    }
-
-    if (check_collision())
-    {
-        oled_clear();
-        stop_game = true;
-        printk(KERN_INFO "Game Over! Your score: %u\n", snake_size);
     }
 
     oled_draw_block(snake[0].x, snake[0].y);
