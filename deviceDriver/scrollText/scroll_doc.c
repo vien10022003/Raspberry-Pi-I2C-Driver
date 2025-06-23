@@ -15,32 +15,29 @@ MODULE_VERSION("1.0");
 
 extern void SSD1306_Write(bool is_cmd, unsigned char data);
 
-// Text hiển thị thông tin nhóm
+/* Text hiển thị thông tin nhóm */
 static char display_text[] = "NHOM 3 LOP L01: TO QUANG VIEN, BUI DUC KHANH, NGUYEN THI HONG NGAN, THAN NHAN CHINH    ";
 static int scroll_offset = 0;
 static int text_length;
-static int scroll_speed = 150; // ms delay
+static int scroll_speed = 150;
 
-// Timer cho auto scroll
+/* Timer cho auto scroll */
 static struct workqueue_struct *scroll_wq;
 static struct delayed_work scroll_work;
 static bool auto_scroll = true;
 static bool module_active = true;
 
-// Clear toàn bộ màn hình OLED
+/* Clear toàn bộ màn hình OLED */
 void oled_clear_screen(void)
 {
     int page, col;
 
     for (page = 0; page < 8; page++)
     {
-        // Set page address
         SSD1306_Write(true, 0xB0 + page);
-        // Set column address to start
-        SSD1306_Write(true, 0x00); // Lower column
-        SSD1306_Write(true, 0x10); // Higher column
+        SSD1306_Write(true, 0x00);
+        SSD1306_Write(true, 0x10);
 
-        // Clear all columns in this page
         for (col = 0; col < 128; col++)
         {
             SSD1306_Write(false, 0x00);
@@ -48,65 +45,61 @@ void oled_clear_screen(void)
     }
 }
 
-// Hiển thị một ký tự tại vị trí x, page
+/* Hiển thị một ký tự tại vị trí x, page */
 void draw_char_at_position(int x, int page, char c)
 {
-    int font_index = char_to_index(c);
+    int font_index;
     int i;
 
     if (x >= 128 || x < 0 || page >= 8 || page < 0)
         return;
 
-    // Set page address
+    font_index = char_to_index(c);
+
     SSD1306_Write(true, 0xB0 + page);
 
-    // Vẽ 8 cột cho ký tự
     for (i = 0; i < 8; i++)
     {
         if ((x + i) >= 128)
             break;
 
-        // Set column address
-        SSD1306_Write(true, 0x00 + ((x + i) & 0x0F));        // Lower column
-        SSD1306_Write(true, 0x10 + (((x + i) >> 4) & 0x0F)); // Higher column
+        SSD1306_Write(true, 0x00 + ((x + i) & 0x0F));
+        SSD1306_Write(true, 0x10 + (((x + i) >> 4) & 0x0F));
 
-        // Gửi font data
         SSD1306_Write(false, font_8x8[font_index][i]);
     }
 }
 
-// Hiển thị text với scroll offset
+/* Hiển thị text với scroll offset */
 void display_scrolled_text(void)
 {
     int char_pos = 0;
     int display_x = 0;
     int page;
     int start_char_index;
+    int pixel_offset; /* FIX C90: khai báo ở đầu hàm */
 
-    // Clear screen trước
     oled_clear_screen();
 
-    // Tính vị trí ký tự bắt đầu dựa trên scroll offset
-    start_char_index = scroll_offset / 8; // Mỗi ký tự rộng 8 pixel
-    int pixel_offset = scroll_offset % 8;
+    start_char_index = scroll_offset / 8;
+    pixel_offset = scroll_offset % 8; /* FIX C90: gán sau khi khai báo */
 
-    // Hiển thị text trên 2 hàng (page 2-3 và page 5-6)
     for (page = 2; page <= 3; page++)
     {
-        display_x = -pixel_offset; // Bắt đầu với offset để tạo hiệu ứng scroll mượt
+        display_x = -pixel_offset;
 
         for (char_pos = start_char_index; char_pos < text_length && display_x < 128; char_pos++)
         {
             if (display_x >= -8)
-            { // Chỉ vẽ nếu ký tự có thể nhìn thấy
+            {
                 draw_char_at_position(display_x, page, display_text[char_pos]);
             }
-            display_x += 8; // Mỗi ký tự cách nhau 8 pixel
+            display_x += 8;
         }
     }
 }
 
-// Timer handler cho auto scroll
+/* Timer handler cho auto scroll */
 static void scroll_work_handler(struct work_struct *work)
 {
     if (!module_active)
@@ -116,7 +109,6 @@ static void scroll_work_handler(struct work_struct *work)
     {
         scroll_offset++;
 
-        // Reset khi scroll hết text
         if (scroll_offset >= (text_length * 8 + 128))
         {
             scroll_offset = 0;
@@ -125,14 +117,13 @@ static void scroll_work_handler(struct work_struct *work)
         display_scrolled_text();
     }
 
-    // Lên lịch cho lần scroll tiếp theo
     if (module_active)
     {
         queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(scroll_speed));
     }
 }
 
-// Keyboard handler để điều khiển scroll
+/* Keyboard handler để điều khiển scroll */
 static int keyboard_notify(struct notifier_block *nblock, unsigned long code, void *_param)
 {
     struct keyboard_notifier_param *param = _param;
@@ -141,7 +132,7 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
     {
         switch (param->value)
         {
-        case 103: // UP arrow - scroll ngược lại
+        case 103: /* UP arrow */
             scroll_offset -= 8;
             if (scroll_offset < 0)
                 scroll_offset = 0;
@@ -150,7 +141,7 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
             printk(KERN_INFO "Scroll UP: offset = %d\n", scroll_offset);
             break;
 
-        case 108: // DOWN arrow - scroll tiến lên
+        case 108: /* DOWN arrow */
             scroll_offset += 8;
             if (scroll_offset >= (text_length * 8 + 128))
             {
@@ -161,7 +152,7 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
             printk(KERN_INFO "Scroll DOWN: offset = %d\n", scroll_offset);
             break;
 
-        case 57: // SPACE - toggle auto scroll
+        case 57: /* SPACE */
             auto_scroll = !auto_scroll;
             printk(KERN_INFO "Auto scroll: %s\n", auto_scroll ? "ON" : "OFF");
             if (auto_scroll && module_active)
@@ -170,20 +161,20 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
             }
             break;
 
-        case 1: // ESC - reset position
+        case 1: /* ESC */
             scroll_offset = 0;
             display_scrolled_text();
             printk(KERN_INFO "Scroll RESET\n");
             break;
 
-        case 105: // LEFT arrow - giảm tốc độ
+        case 105: /* LEFT arrow */
             scroll_speed += 50;
             if (scroll_speed > 500)
                 scroll_speed = 500;
             printk(KERN_INFO "Scroll speed: %d ms\n", scroll_speed);
             break;
 
-        case 106: // RIGHT arrow - tăng tốc độ
+        case 106: /* RIGHT arrow */
             scroll_speed -= 50;
             if (scroll_speed < 50)
                 scroll_speed = 50;
@@ -208,13 +199,7 @@ static int __init scroll_module_init(void)
     printk(KERN_INFO "=== SCROLL TEXT MODULE ===\n");
     printk(KERN_INFO "Team: %s\n", display_text);
     printk(KERN_INFO "Text length: %d characters\n", text_length);
-    printk(KERN_INFO "Controls:\n");
-    printk(KERN_INFO "  UP/DOWN: Manual scroll\n");
-    printk(KERN_INFO "  LEFT/RIGHT: Speed control\n");
-    printk(KERN_INFO "  SPACE: Toggle auto scroll\n");
-    printk(KERN_INFO "  ESC: Reset position\n");
 
-    // Tạo workqueue
     scroll_wq = create_singlethread_workqueue("scroll_workqueue");
     if (!scroll_wq)
     {
@@ -224,7 +209,6 @@ static int __init scroll_module_init(void)
 
     INIT_DELAYED_WORK(&scroll_work, scroll_work_handler);
 
-    // Đăng ký keyboard notifier
     ret = register_keyboard_notifier(&keyboard_notifier_block);
     if (ret)
     {
@@ -233,10 +217,7 @@ static int __init scroll_module_init(void)
         return ret;
     }
 
-    // Hiển thị text ban đầu
     display_scrolled_text();
-
-    // Bắt đầu auto scroll sau 2 giây
     queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(2000));
 
     printk(KERN_INFO "Scroll module loaded successfully!\n");
@@ -247,14 +228,9 @@ static void __exit scroll_module_exit(void)
 {
     module_active = false;
 
-    // Hủy đăng ký keyboard notifier
     unregister_keyboard_notifier(&keyboard_notifier_block);
-
-    // Dừng và hủy workqueue
     cancel_delayed_work_sync(&scroll_work);
     destroy_workqueue(scroll_wq);
-
-    // Clear màn hình khi thoát
     oled_clear_screen();
 
     printk(KERN_INFO "Scroll module unloaded successfully!\n");
