@@ -21,9 +21,13 @@ make clean && make
 echo -e "${GREEN}Loading I2C Driver...${NC}"
 sudo insmod I2CDriver.ko
 
-# Build scroll module
+# Copy symvers và build scroll module
 echo -e "${GREEN}Building Scroll Module...${NC}"
 cd ../scrollText
+
+echo "Copying Module.symvers..."
+cp ../I2CClientDriver/Module.symvers ./
+
 make clean && make
 
 # Load scroll module
@@ -32,5 +36,5 @@ sudo insmod scroll_doc.ko
 
 cd ../../
 
-echo -e "${GREEN}✅ SUCCESS! Use UP/DOWN to scroll, SPACE to toggle auto${NC}"
+echo -e "${GREEN}✅ SUCCESS!${NC}"
 dmesg | tail -5
