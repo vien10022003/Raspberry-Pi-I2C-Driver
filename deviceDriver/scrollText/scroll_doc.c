@@ -75,27 +75,25 @@ void display_scrolled_text(void)
 {
     int char_pos = 0;
     int display_x = 0;
-    int page;
-    int start_char_index;
+    int start_page;
     int pixel_offset; /* FIX C90: khai báo ở đầu hàm */
 
     oled_clear_screen();
 
-    start_char_index = scroll_offset / 8;
-    pixel_offset = scroll_offset % 8; /* FIX C90: gán sau khi khai báo */
+    /* SCROLL DỌC: thay đổi page thay vì x position */
+    start_page = (scroll_offset / 8) % 8; /* Page 0-7 */
+    pixel_offset = scroll_offset % 8;
 
-    for (page = 2; page <= 3; page++)
+    /* Hiển thị text trên 1 page, scroll theo page */
+    display_x = 0;
+
+    for (char_pos = 0; char_pos < text_length && display_x < 128; char_pos++)
     {
-        display_x = -pixel_offset;
+        /* Vẽ ký tự tại page có scroll offset */
+        int current_page = (start_page + (display_x / 64)) % 8; /* Wrap around pages */
 
-        for (char_pos = start_char_index; char_pos < text_length && display_x < 128; char_pos++)
-        {
-            if (display_x >= -8)
-            {
-                draw_char_at_position(display_x, page, display_text[char_pos]);
-            }
-            display_x += 8;
-        }
+        draw_char_at_position(display_x % 128, current_page, display_text[char_pos]);
+        display_x += 8; /* Mỗi ký tự cách nhau 8 pixel */
     }
 }
 
@@ -132,8 +130,8 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
     {
         switch (param->value)
         {
-        case 103: /* UP arrow */
-            scroll_offset -= 8;
+        case 103:               /* UP arrow - scroll lên */
+            scroll_offset -= 1; /* Giảm page */
             if (scroll_offset < 0)
                 scroll_offset = 0;
             if (!auto_scroll)
@@ -141,12 +139,10 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
             printk(KERN_INFO "Scroll UP: offset = %d\n", scroll_offset);
             break;
 
-        case 108: /* DOWN arrow */
-            scroll_offset += 8;
-            if (scroll_offset >= (text_length * 8 + 128))
-            {
-                scroll_offset = text_length * 8 + 127;
-            }
+        case 108:                    /* DOWN arrow - scroll xuống */
+            scroll_offset += 1;      /* Tăng page */
+            if (scroll_offset >= 64) /* 8 pages * 8 pixel/page */
+                scroll_offset = 63;
             if (!auto_scroll)
                 display_scrolled_text();
             printk(KERN_INFO "Scroll DOWN: offset = %d\n", scroll_offset);
