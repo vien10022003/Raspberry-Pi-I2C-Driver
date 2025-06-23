@@ -21,15 +21,17 @@ make clean && make
 echo -e "${GREEN}Loading I2C Driver...${NC}"
 sudo insmod I2CDriver.ko
 
-# Build scroll module với symvers
+# Build scroll module
 echo -e "${GREEN}Building Scroll Module...${NC}"
 cd ../scrollText
 
-echo "Copying Module.symvers..."
+echo "Cleaning first..."
+make clean
+
+echo "Copying Module.symvers AFTER clean..."
 cp ../I2CClientDriver/Module.symvers ./Module.symvers
 
 echo "Building with KBUILD_EXTRA_SYMBOLS..."
-make clean
 KBUILD_EXTRA_SYMBOLS=$(pwd)/Module.symvers make
 
 # Load scroll module
