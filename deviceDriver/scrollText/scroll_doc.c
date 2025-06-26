@@ -27,7 +27,15 @@ static struct delayed_work scroll_work;
 static bool auto_scroll = true;
 static bool module_active = true;
 
-/* ✅ LOCAL RESET FUNCTION - không cần sửa I2CDriver */
+/* ✅ FIX ORIENTATION - thêm hàm này */
+void fix_display_orientation(void)
+{
+    // Fix segment remap và COM direction để text đúng hướng
+    SSD1306_Write(true, 0xA0); // Segment remap: column 0 -> segment 0 (normal)
+    SSD1306_Write(true, 0xC0); // COM scan direction: normal (COM0 to COM63)
+}
+
+/* ✅ UPDATED: oled_reset_display với fix orientation */
 void oled_reset_display(void)
 {
     printk(KERN_INFO "Resetting display state...\n");
@@ -35,6 +43,9 @@ void oled_reset_display(void)
     // Turn off display
     SSD1306_Write(true, 0xAE); // Display OFF
     msleep(10);
+
+    // ✅ Fix orientation first
+    fix_display_orientation();
 
     // Reset addressing mode to horizontal
     SSD1306_Write(true, 0x20); // Set memory addressing mode
@@ -63,7 +74,7 @@ void oled_reset_display(void)
     // Turn display back on
     SSD1306_Write(true, 0xAF); // Display ON
 
-    printk(KERN_INFO "Display reset completed.\n");
+    printk(KERN_INFO "Display reset with correct orientation completed.\n");
 }
 
 /* Clear toàn bộ màn hình OLED */
@@ -109,13 +120,16 @@ void draw_char_at_position(int x, int page, char c)
     }
 }
 
-/* ✅ FIXED: Hiển thị text với scroll ngang đúng cách */
+/* ✅ UPDATED: display_scrolled_text với orientation fix */
 void display_scrolled_text(void)
 {
     int char_pos = 0;
     int display_x = 0;
 
     oled_clear_screen();
+
+    // ✅ Ensure correct orientation
+    fix_display_orientation();
 
     /* SCROLL NGANG: bắt đầu từ offset và hiển thị từ trái sang phải */
     display_x = -scroll_offset;
@@ -125,7 +139,7 @@ void display_scrolled_text(void)
         /* Chỉ vẽ nếu ký tự nằm trong vùng nhìn thấy */
         if (display_x >= -8 && display_x < 128)
         {
-            draw_char_at_position(display_x, 2, display_text[char_pos]); // Hiển thị ở page 2 (giữa màn hình)
+            draw_char_at_position(display_x, 0, display_text[char_pos]); // Page 0 (top)
         }
 
         display_x += 8; /* Mỗi ký tự cách nhau 8 pixel */
@@ -227,6 +241,7 @@ static struct notifier_block keyboard_notifier_block = {
     .notifier_call = keyboard_notify,
 };
 
+/* ✅ UPDATED: scroll_module_init với orientation fix */
 static int __init scroll_module_init(void)
 {
     int ret;
@@ -254,6 +269,9 @@ static int __init scroll_module_init(void)
         destroy_workqueue(scroll_wq);
         return ret;
     }
+
+    // ✅ Fix orientation trước khi hiển thị
+    fix_display_orientation();
 
     display_scrolled_text();
     queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(2000));
