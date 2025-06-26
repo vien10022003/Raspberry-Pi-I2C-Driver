@@ -45,29 +45,38 @@ void oled_clear_screen(void)
     }
 }
 
-/* ✅ DÙNG FONT THẬT - render đúng cách */
+/* Hiển thị ký tự với font đã chuyển vị */
 void draw_char_at_position(int x, int page, char c)
 {
     int font_index;
-    int i;
+    int i, j;
+    uint8_t transposed_data[8] = {0};
 
     if (x >= 128 || x < 0 || page >= 8 || page < 0)
         return;
 
     font_index = char_to_index(c);
 
-    SSD1306_Write(true, 0xB0 + page);
+    // Chuyển vị dữ liệu font 8x8 để khớp với cách SSD1306 render
+    for (i = 0; i < 8; i++)
+    {
+        for (j = 0; j < 8; j++)
+        {
+            if (font_8x8[font_index][i] & (1 << (7 - j)))
+            {
+                transposed_data[j] |= (1 << i);
+            }
+        }
+    }
 
+    SSD1306_Write(true, 0xB0 + page); // Đặt địa chỉ trang
     for (i = 0; i < 8; i++)
     {
         if ((x + i) >= 128)
             break;
-
-        SSD1306_Write(true, 0x00 + ((x + i) & 0x0F));
-        SSD1306_Write(true, 0x10 + (((x + i) >> 4) & 0x0F));
-
-        // ✅ Sử dụng font data gốc
-        SSD1306_Write(false, font_8x8[font_index][i]);
+        SSD1306_Write(true, 0x00 + ((x + i) & 0x0F));        // Đặt địa chỉ cột thấp
+        SSD1306_Write(true, 0x10 + (((x + i) >> 4) & 0x0F)); // Đặt địa chỉ cột cao
+        SSD1306_Write(false, transposed_data[i]);            // Gửi dữ liệu hàng đã chuyển vị
     }
 }
 
@@ -213,15 +222,36 @@ static int __init scroll_module_init(void)
 
     text_length = strlen(display_text);
 
-    printk(KERN_INFO "=== SCROLL TEXT MODULE ===\n");
+    printk(KERN_INFO "=== MODULE SCROLL TEXT ===\n");
     printk(KERN_INFO "Team: %s\n", display_text);
     printk(KERN_INFO "Text length: %d characters\n", text_length);
     printk(KERN_INFO "Scroll speed: %d ms\n", scroll_speed);
 
+    // Khởi tạo SSD1306
+    SSD1306_Write(true, 0xAE); // Tắt hiển thị
+    SSD1306_Write(true, 0xA8); // Đặt tỷ lệ multiplex
+    SSD1306_Write(true, 0x3F); // 64 MUX
+    SSD1306_Write(true, 0xD3); // Đặt offset hiển thị
+    SSD1306_Write(true, 0x00); // Không offset
+    SSD1306_Write(true, 0x40); // Đặt dòng bắt đầu hiển thị là 0
+    SSD1306_Write(true, 0xA1); // Đảo ngược segment (flip ngang)
+    SSD1306_Write(true, 0xC8); // Đảo ngược COM (flip dọc)
+    SSD1306_Write(true, 0xDA); // Đặt chân COM
+    SSD1306_Write(true, 0x12);
+    SSD1306_Write(true, 0x81); // Đặt độ tương phản
+    SSD1306_Write(true, 0x7F); // Giá trị tương phản
+    SSD1306_Write(true, 0xA4); // Bật toàn bộ hiển thị
+    SSD1306_Write(true, 0xA6); // Hiển thị bình thường
+    SSD1306_Write(true, 0xD5); // Đặt tần số dao động
+    SSD1306_Write(true, 0x80); // Tần số mặc định
+    SSD1306_Write(true, 0x8D); // Bơm điện
+    SSD1306_Write(true, 0x14); // Bật bơm điện
+    SSD1306_Write(true, 0xAF); // Bật hiển thị
+
     scroll_wq = create_singlethread_workqueue("scroll_workqueue");
     if (!scroll_wq)
     {
-        printk(KERN_ERR "Failed to create workqueue\n");
+        printk(KERN_ERR "Không thể tạo workqueue\n");
         return -ENOMEM;
     }
 
@@ -230,7 +260,7 @@ static int __init scroll_module_init(void)
     ret = register_keyboard_notifier(&keyboard_notifier_block);
     if (ret)
     {
-        printk(KERN_ERR "Failed to register keyboard notifier\n");
+        printk(KERN_ERR "Không thể đăng ký keyboard notifier\n");
         destroy_workqueue(scroll_wq);
         return ret;
     }
@@ -238,7 +268,7 @@ static int __init scroll_module_init(void)
     display_scrolled_text();
     queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(2000));
 
-    printk(KERN_INFO "Scroll module loaded successfully!\n");
+    printk(KERN_INFO "Module scroll đã tải thành công!\n");
     printk(KERN_INFO "Controls: SPACE=toggle, ESC=reset, UP/DOWN=manual, LEFT/RIGHT=speed, Q=char test\n");
     return 0;
 }
@@ -251,12 +281,12 @@ static void __exit scroll_module_exit(void)
     cancel_delayed_work_sync(&scroll_work);
     destroy_workqueue(scroll_wq);
 
-    /* Reset display state đơn giản */
-    SSD1306_Write(true, 0x20); // Set addressing mode
-    SSD1306_Write(true, 0x00); // Horizontal mode
+    /* Reset trạng thái hiển thị */
+    SSD1306_Write(true, 0x20); // Đặt chế độ địa chỉ
+    SSD1306_Write(true, 0x00); // Chế độ ngang
     oled_clear_screen();
 
-    printk(KERN_INFO "Scroll module unloaded successfully!\n");
+    printk(KERN_INFO "Module scroll đã được gỡ cài đặt thành công!\n");
 }
 
 module_init(scroll_module_init);
