@@ -165,8 +165,8 @@ void display_big_scrolled_text(void)
     int display_x = 0;
 
     /* Clear 2 pages for big text */
-    // oled_clear_page(1);
-    // oled_clear_page(2);
+    oled_clear_page(1);
+    oled_clear_page(2);
 
     /* SCROLL NGANG: text di chuyển từ trái sang phải */
     display_x = -scroll_offset;
@@ -269,8 +269,8 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
 
         case 16: /* Q - test BIG characters */
             printk(KERN_INFO "BIG Performance test...\n");
-            // oled_clear_page(1);
-            // oled_clear_page(2);
+            oled_clear_page(1);
+            oled_clear_page(2);
 
             draw_big_char_at_position(0, 1, 'B');
             draw_big_char_at_position(16, 1, 'I');
