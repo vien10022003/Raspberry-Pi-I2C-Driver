@@ -1,4 +1,4 @@
-obj-m += scroll_doc.o
+obj-m += oled_text_display.o
 
 KDIR = /lib/modules/$(shell uname -r)/build
 
