@@ -45,13 +45,16 @@ void oled_clear_screen(void)
     }
 }
 
-/* ✅ SIMPLE PATTERN TEST - không dùng font */
+/* ✅ DÙNG FONT THẬT - render đúng cách */
 void draw_char_at_position(int x, int page, char c)
 {
+    int font_index;
     int i;
 
     if (x >= 128 || x < 0 || page >= 8 || page < 0)
         return;
+
+    font_index = char_to_index(c);
 
     SSD1306_Write(true, 0xB0 + page);
 
@@ -63,54 +66,8 @@ void draw_char_at_position(int x, int page, char c)
         SSD1306_Write(true, 0x00 + ((x + i) & 0x0F));
         SSD1306_Write(true, 0x10 + (((x + i) >> 4) & 0x0F));
 
-        // ✅ Simple test patterns để check orientation
-        unsigned char pattern = 0;
-
-        if (c >= 'A' && c <= 'Z')
-        {
-            // Letters: vertical line pattern
-            pattern = 0xFF; // Full vertical line
-        }
-        else if (c >= '0' && c <= '9')
-        {
-            // Numbers: different pattern
-            switch (c)
-            {
-            case '0':
-                pattern = 0x7E;
-                break; // Outline
-            case '1':
-                pattern = 0x18;
-                break; // Thin line
-            case '2':
-                pattern = 0xF0;
-                break; // Top half
-            case '3':
-                pattern = 0x0F;
-                break; // Bottom half
-            default:
-                pattern = 0x55;
-                break; // Dotted
-            }
-        }
-        else if (c == ' ')
-        {
-            pattern = 0x00; // Empty for space
-        }
-        else if (c == ':')
-        {
-            pattern = 0x24; // Two dots
-        }
-        else if (c == ',')
-        {
-            pattern = 0x02; // Bottom dot
-        }
-        else
-        {
-            pattern = 0x81; // Corner dots for other chars
-        }
-
-        SSD1306_Write(false, pattern);
+        // ✅ Sử dụng font data gốc
+        SSD1306_Write(false, font_8x8[font_index][i]);
     }
 }
 
@@ -170,7 +127,7 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
     {
         switch (param->value)
         {
-        case 103: /* UP arrow - scroll lên */
+        case 103: /* UP arrow - scroll faster */
             scroll_offset -= 8;
             if (scroll_offset < 0)
                 scroll_offset = 0;
@@ -179,7 +136,7 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
             printk(KERN_INFO "Scroll UP: offset = %d\n", scroll_offset);
             break;
 
-        case 108: /* DOWN arrow - scroll xuống */
+        case 108: /* DOWN arrow - scroll slower */
             scroll_offset += 8;
             if (scroll_offset >= (text_length * 8))
                 scroll_offset = text_length * 8 - 1;
@@ -188,7 +145,7 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
             printk(KERN_INFO "Scroll DOWN: offset = %d\n", scroll_offset);
             break;
 
-        case 57: /* SPACE */
+        case 57: /* SPACE - toggle auto scroll */
             auto_scroll = !auto_scroll;
             printk(KERN_INFO "Auto scroll: %s\n", auto_scroll ? "ON" : "OFF");
             if (auto_scroll && module_active)
@@ -197,60 +154,48 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
             }
             break;
 
-        case 1: /* ESC */
+        case 1: /* ESC - reset scroll */
             scroll_offset = 0;
             display_scrolled_text();
             printk(KERN_INFO "Scroll RESET\n");
             break;
 
-        case 105: /* LEFT arrow - faster */
+        case 105: /* LEFT arrow - increase speed (decrease delay) */
             scroll_speed -= 50;
             if (scroll_speed < 50)
                 scroll_speed = 50;
             printk(KERN_INFO "Scroll speed: %d ms (faster)\n", scroll_speed);
             break;
 
-        case 106: /* RIGHT arrow - slower */
+        case 106: /* RIGHT arrow - decrease speed (increase delay) */
             scroll_speed += 50;
             if (scroll_speed > 500)
                 scroll_speed = 500;
             printk(KERN_INFO "Scroll speed: %d ms (slower)\n", scroll_speed);
             break;
 
-        case 16: /* Q - test different patterns */
-            printk(KERN_INFO "Testing display patterns...\n");
-
-            // Test pattern: draw lines on different pages
+        case 16: /* Q - test single character */
+            printk(KERN_INFO "Testing single characters...\n");
             oled_clear_screen();
 
-            // Page 0: horizontal line pattern
-            SSD1306_Write(true, 0xB0 + 0);
-            SSD1306_Write(true, 0x00);
-            SSD1306_Write(true, 0x10);
-            for (int i = 0; i < 128; i++)
-            {
-                SSD1306_Write(false, 0xFF); // Full line
-            }
+            // Test a few characters at fixed positions
+            draw_char_at_position(0, 0, 'N'); // First char of NHOM
+            draw_char_at_position(8, 0, 'H');
+            draw_char_at_position(16, 0, 'O');
+            draw_char_at_position(24, 0, 'M');
+            draw_char_at_position(32, 0, ' ');
+            draw_char_at_position(40, 0, '3');
 
-            // Page 2: dotted pattern
-            SSD1306_Write(true, 0xB0 + 2);
-            SSD1306_Write(true, 0x00);
-            SSD1306_Write(true, 0x10);
-            for (int i = 0; i < 128; i++)
-            {
-                SSD1306_Write(false, i % 2 ? 0x55 : 0xAA); // Checkerboard
-            }
+            // Test on different page
+            draw_char_at_position(0, 2, 'L');
+            draw_char_at_position(8, 2, 'O');
+            draw_char_at_position(16, 2, 'P');
+            draw_char_at_position(24, 2, ' ');
+            draw_char_at_position(32, 2, 'L');
+            draw_char_at_position(40, 2, '0');
+            draw_char_at_position(48, 2, '1');
 
-            // Page 4: vertical line test
-            SSD1306_Write(true, 0xB0 + 4);
-            SSD1306_Write(true, 0x00);
-            SSD1306_Write(true, 0x10);
-            for (int i = 0; i < 128; i++)
-            {
-                SSD1306_Write(false, i % 8 == 0 ? 0xFF : 0x00); // Vertical lines every 8 pixels
-            }
-
-            printk(KERN_INFO "Pattern test completed. Check display orientation.\n");
+            printk(KERN_INFO "Character test completed. Check if fonts look correct.\n");
             break;
         }
     }
@@ -268,10 +213,10 @@ static int __init scroll_module_init(void)
 
     text_length = strlen(display_text);
 
-    printk(KERN_INFO "=== SCROLL TEXT MODULE (PATTERN TEST) ===\n");
+    printk(KERN_INFO "=== SCROLL TEXT MODULE ===\n");
     printk(KERN_INFO "Team: %s\n", display_text);
     printk(KERN_INFO "Text length: %d characters\n", text_length);
-    printk(KERN_INFO "Using simple patterns instead of fonts for orientation test\n");
+    printk(KERN_INFO "Scroll speed: %d ms\n", scroll_speed);
 
     scroll_wq = create_singlethread_workqueue("scroll_workqueue");
     if (!scroll_wq)
@@ -294,8 +239,7 @@ static int __init scroll_module_init(void)
     queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(2000));
 
     printk(KERN_INFO "Scroll module loaded successfully!\n");
-    printk(KERN_INFO "Press Q to test display patterns and check orientation\n");
-    printk(KERN_INFO "Controls: SPACE=toggle, ESC=reset, UP/DOWN=manual, LEFT/RIGHT=speed, Q=pattern test\n");
+    printk(KERN_INFO "Controls: SPACE=toggle, ESC=reset, UP/DOWN=manual, LEFT/RIGHT=speed, Q=char test\n");
     return 0;
 }
 
@@ -307,7 +251,7 @@ static void __exit scroll_module_exit(void)
     cancel_delayed_work_sync(&scroll_work);
     destroy_workqueue(scroll_wq);
 
-    /* Reset display state */
+    /* Reset display state đơn giản */
     SSD1306_Write(true, 0x20); // Set addressing mode
     SSD1306_Write(true, 0x00); // Horizontal mode
     oled_clear_screen();
