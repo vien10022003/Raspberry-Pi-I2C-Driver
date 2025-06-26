@@ -19,7 +19,7 @@ extern void SSD1306_Write(bool is_cmd, unsigned char data);
 static char display_text[] = "NHOM 3 LOP L01: TO QUANG VIEN, BUI DUC KHANH, NGUYEN THI HONG NGAN, THAN NHAN CHINH    ";
 static int scroll_offset = 0;
 static int text_length;
-static int scroll_speed = 150;
+static int scroll_speed = 300;
 
 /* Timer cho auto scroll */
 static struct workqueue_struct *scroll_wq;
@@ -74,25 +74,25 @@ void draw_char_at_position(int x, int page, char c)
 void display_scrolled_text(void)
 {
     int char_pos = 0;
-    int display_x = 0;
-    int start_page;
-    int pixel_offset; /* FIX C90: khai báo ở đầu hàm */
+    int start_x;
+    int display_x;
 
     oled_clear_screen();
 
-    /* SCROLL DỌC: thay đổi page thay vì x position */
-    start_page = (scroll_offset / 8) % 8; /* Page 0-7 */
-    pixel_offset = scroll_offset % 8;
+    /* SCROLL NGANG: thay đổi x position */
+    start_x = -(scroll_offset % 8); /* Pixel-level scroll */
 
-    /* Hiển thị text trên 1 page, scroll theo page */
-    display_x = 0;
+    /* Hiển thị text trên page 0 (hoặc page bạn muốn) */
+    display_x = start_x;
 
-    for (char_pos = 0; char_pos < text_length && display_x < 128; char_pos++)
+    for (char_pos = 0; char_pos < text_length; char_pos++)
     {
-        /* Vẽ ký tự tại page có scroll offset */
-        int current_page = (start_page + (display_x / 64)) % 8; /* Wrap around pages */
-
-        draw_char_at_position(display_x % 128, current_page, display_text[char_pos]);
+        if (display_x >= 128)
+            break;             /* Vượt quá màn hình */
+        if (display_x + 8 > 0) /* Chỉ vẽ nếu ký tự có thể nhìn thấy */
+        {
+            draw_char_at_position(display_x, 0, display_text[char_pos]);
+        }
         display_x += 8; /* Mỗi ký tự cách nhau 8 pixel */
     }
 }
@@ -107,9 +107,10 @@ static void scroll_work_handler(struct work_struct *work)
     {
         scroll_offset++;
 
-        if (scroll_offset >= (text_length * 8 + 128))
+        /* Reset khi scroll hết text */
+        if (scroll_offset >= (text_length * 8))
         {
-            scroll_offset = 0;
+            scroll_offset = -128; /* Bắt đầu từ ngoài màn hình */
         }
 
         display_scrolled_text();
