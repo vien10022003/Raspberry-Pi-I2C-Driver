@@ -95,44 +95,41 @@ void oled_clear_screen(void)
     }
 }
 
-/* ✅ METHOD 3: Rotate font 180 degrees */
-void draw_char_at_position(int x, int page, char c)
+/* ✅ COMPLETELY NEW APPROACH - Render by ROW instead of COLUMN */
+void draw_char_rotated(int x, int page, char c)
 {
     int font_index;
-    int i;
+    int row, col;
+    unsigned char row_data;
 
     if (x >= 128 || x < 0 || page >= 8 || page < 0)
         return;
 
     font_index = char_to_index(c);
 
-    // Set page address
-    SSD1306_Write(true, 0xB0 + page);
-
-    // ✅ Method 3: Render font rotated 180°
-    for (i = 0; i < 8; i++)
+    // Render 8x8 font rotated 90 degrees
+    for (row = 0; row < 8; row++)
     {
-        if ((x + i) >= 128)
-            break;
+        if ((page * 8 + row) >= 64)
+            break; // Don't exceed display height
 
-        // Set column address
-        SSD1306_Write(true, 0x00 + ((x + i) & 0x0F));
-        SSD1306_Write(true, 0x10 + (((x + i) >> 4) & 0x0F));
+        row_data = 0;
 
-        // Use font data from opposite column and flip bits
-        unsigned char font_data = font_8x8[font_index][7 - i];
-        unsigned char flipped_data = 0;
-        int bit;
-
-        for (bit = 0; bit < 8; bit++)
+        // Extract bits for this row from all 8 columns of font
+        for (col = 0; col < 8; col++)
         {
-            if (font_data & (1 << bit))
+            if (font_8x8[font_index][col] & (1 << row))
             {
-                flipped_data |= (1 << (7 - bit));
+                row_data |= (1 << col);
             }
         }
 
-        SSD1306_Write(false, flipped_data);
+        // Set position for this row
+        SSD1306_Write(true, 0xB0 + page);
+        SSD1306_Write(true, 0x00 + (x & 0x0F));
+        SSD1306_Write(true, 0x10 + ((x >> 4) & 0x0F));
+
+        SSD1306_Write(false, row_data);
     }
 }
 
@@ -152,7 +149,7 @@ void display_scrolled_text(void)
         // Chỉ vẽ nếu ký tự nằm trong vùng nhìn thấy
         if (display_x >= -8 && display_x < 128)
         {
-            draw_char_at_position(display_x, 1, display_text[char_pos]); // Page 1 (gần đầu màn hình)
+            draw_char_rotated(display_x, 1, display_text[char_pos]); // Page 1 (gần đầu màn hình)
         }
 
         display_x += 8; // Mỗi ký tự cách nhau 8 pixel
