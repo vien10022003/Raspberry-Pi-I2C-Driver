@@ -95,11 +95,12 @@ void oled_clear_screen(void)
     }
 }
 
-/* ✅ FIXED: Hiển thị một ký tự với proper orientation */
+/* ✅ FIXED: Render font với orientation đúng */
 void draw_char_at_position(int x, int page, char c)
 {
     int font_index;
-    int i;
+    int i, bit;
+    unsigned char font_data;
 
     if (x >= 128 || x < 0 || page >= 8 || page < 0)
         return;
@@ -109,18 +110,30 @@ void draw_char_at_position(int x, int page, char c)
     // Set page address
     SSD1306_Write(true, 0xB0 + page);
 
-    // Draw character từ trái sang phải
+    // ✅ Method 1: Render font với bit order đảo ngược
     for (i = 0; i < 8; i++)
     {
         if ((x + i) >= 128)
             break;
 
-        // Set column address cho từng pixel
-        SSD1306_Write(true, 0x00 + ((x + i) & 0x0F));        // Lower column
-        SSD1306_Write(true, 0x10 + (((x + i) >> 4) & 0x0F)); // Higher column
+        // Set column address
+        SSD1306_Write(true, 0x00 + ((x + i) & 0x0F));
+        SSD1306_Write(true, 0x10 + (((x + i) >> 4) & 0x0F));
 
-        // Write font data
-        SSD1306_Write(false, font_8x8[font_index][i]);
+        // ✅ Flip font data vertically (đảo bit order)
+        font_data = font_8x8[font_index][i];
+        unsigned char flipped_data = 0;
+
+        // Flip bits: bit 0 -> bit 7, bit 1 -> bit 6, etc.
+        for (bit = 0; bit < 8; bit++)
+        {
+            if (font_data & (1 << bit))
+            {
+                flipped_data |= (1 << (7 - bit));
+            }
+        }
+
+        SSD1306_Write(false, flipped_data);
     }
 }
 
