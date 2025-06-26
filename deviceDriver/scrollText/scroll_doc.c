@@ -139,7 +139,7 @@ static void scroll_work_handler(struct work_struct *work)
 
     if (auto_scroll)
     {
-        scroll_offset += 8; // 1 lần scroll = 1 chữ
+        scroll_offset += 4; /* ✅ Scroll 4 pixel mỗi lần */
 
         /* Reset khi scroll hết text */
         if (scroll_offset >= (text_length * 8 + 128))
@@ -148,11 +148,12 @@ static void scroll_work_handler(struct work_struct *work)
         }
 
         display_scrolled_text();
-    }
 
-    if (module_active)
-    {
-        queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(scroll_speed));
+        /* ✅ Chỉ queue work tiếp khi auto_scroll vẫn ON */
+        if (module_active && auto_scroll)
+        {
+            queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(scroll_speed));
+        }
     }
 }
 
@@ -165,30 +166,42 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
     {
         switch (param->value)
         {
-        case 103:               /* UP arrow - manual scroll up */
-            scroll_offset -= 8; /* ✅ TĂNG từ 4 lên 8 pixel */
-            if (scroll_offset < 0)
-                scroll_offset = 0;
-            if (!auto_scroll)
+        case 103:             /* UP arrow - manual scroll up */
+            if (!auto_scroll) /* ✅ Chỉ hoạt động khi manual mode */
+            {
+                scroll_offset -= 8; /* ✅ Scroll 8 pixel mỗi lần */
+                if (scroll_offset < 0)
+                    scroll_offset = 0;
                 display_scrolled_text();
-            printk(KERN_INFO "Scroll UP: offset = %d\n", scroll_offset);
+                printk(KERN_INFO "Manual scroll UP: offset = %d\n", scroll_offset);
+            }
             break;
 
-        case 108:               /* DOWN arrow - manual scroll down */
-            scroll_offset += 8; /* ✅ TĂNG từ 4 lên 8 pixel */
-            if (scroll_offset >= (text_length * 8))
-                scroll_offset = text_length * 8 - 1;
-            if (!auto_scroll)
+        case 108:             /* DOWN arrow - manual scroll down */
+            if (!auto_scroll) /* ✅ Chỉ hoạt động khi manual mode */
+            {
+                scroll_offset += 8; /* ✅ Scroll 8 pixel mỗi lần */
+                if (scroll_offset >= (text_length * 8))
+                    scroll_offset = text_length * 8 - 1;
                 display_scrolled_text();
-            printk(KERN_INFO "Scroll DOWN: offset = %d\n", scroll_offset);
+                printk(KERN_INFO "Manual scroll DOWN: offset = %d\n", scroll_offset);
+            }
             break;
 
         case 57: /* SPACE - toggle auto scroll */
             auto_scroll = !auto_scroll;
             printk(KERN_INFO "Auto scroll: %s\n", auto_scroll ? "ON" : "OFF");
+
             if (auto_scroll && module_active)
             {
+                /* ✅ Bật auto scroll - start work */
                 queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(scroll_speed));
+            }
+            else
+            {
+                /* ✅ Tắt auto scroll - DỪNG work hoàn toàn */
+                cancel_delayed_work(&scroll_work);
+                printk(KERN_INFO "Manual control mode - workqueue stopped\n");
             }
             break;
 
