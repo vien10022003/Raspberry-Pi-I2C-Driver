@@ -19,63 +19,13 @@ extern void SSD1306_Write(bool is_cmd, unsigned char data);
 static char display_text[] = "NHOM 3 LOP L01: TO QUANG VIEN, BUI DUC KHANH, NGUYEN THI HONG NGAN, THAN NHAN CHINH    ";
 static int scroll_offset = 0;
 static int text_length;
-static int scroll_speed = 300;
+static int scroll_speed = 300; // ✅ Chỉ thay đổi từ 150 thành 300ms
 
 /* Timer cho auto scroll */
 static struct workqueue_struct *scroll_wq;
 static struct delayed_work scroll_work;
 static bool auto_scroll = true;
 static bool module_active = true;
-
-/* ✅ FIX ORIENTATION - giữ nguyên setting như I2CDriver */
-void fix_display_orientation(void)
-{
-    // Giữ nguyên setting như I2CDriver gốc
-    SSD1306_Write(true, 0xA1); // Set segment remap với column address 127 mapped to segment 0
-    SSD1306_Write(true, 0xC8); // Set com output scan direction, scan from com63 to com 0
-}
-
-/* LOCAL RESET FUNCTION */
-void oled_reset_display(void)
-{
-    printk(KERN_INFO "Resetting display state...\n");
-
-    // Turn off display
-    SSD1306_Write(true, 0xAE); // Display OFF
-    msleep(10);
-
-    // Keep original I2CDriver orientation settings
-    fix_display_orientation();
-
-    // Reset addressing mode to horizontal
-    SSD1306_Write(true, 0x20); // Set memory addressing mode
-    SSD1306_Write(true, 0x00); // Horizontal addressing mode
-
-    // Reset column address range
-    SSD1306_Write(true, 0x21); // Set column address
-    SSD1306_Write(true, 0x00); // Column start = 0
-    SSD1306_Write(true, 0x7F); // Column end = 127
-
-    // Reset page address range
-    SSD1306_Write(true, 0x22); // Set page address
-    SSD1306_Write(true, 0x00); // Page start = 0
-    SSD1306_Write(true, 0x07); // Page end = 7
-
-    // Clear all display
-    int i;
-    for (i = 0; i < 1024; i++)
-    {
-        SSD1306_Write(false, 0x00);
-    }
-
-    // Deactivate any scroll
-    SSD1306_Write(true, 0x2E); // Deactivate scroll
-
-    // Turn display back on
-    SSD1306_Write(true, 0xAF); // Display ON
-
-    printk(KERN_INFO "Display reset completed.\n");
-}
 
 /* Clear toàn bộ màn hình OLED */
 void oled_clear_screen(void)
@@ -95,45 +45,32 @@ void oled_clear_screen(void)
     }
 }
 
-/* ✅ COMPLETELY NEW APPROACH - Render by ROW instead of COLUMN */
-void draw_char_rotated(int x, int page, char c)
+/* Hiển thị một ký tự tại vị trí x, page */
+void draw_char_at_position(int x, int page, char c)
 {
     int font_index;
-    int row, col;
-    unsigned char row_data;
+    int i;
 
     if (x >= 128 || x < 0 || page >= 8 || page < 0)
         return;
 
     font_index = char_to_index(c);
 
-    // Render 8x8 font rotated 90 degrees
-    for (row = 0; row < 8; row++)
+    SSD1306_Write(true, 0xB0 + page);
+
+    for (i = 0; i < 8; i++)
     {
-        if ((page * 8 + row) >= 64)
-            break; // Don't exceed display height
+        if ((x + i) >= 128)
+            break;
 
-        row_data = 0;
+        SSD1306_Write(true, 0x00 + ((x + i) & 0x0F));
+        SSD1306_Write(true, 0x10 + (((x + i) >> 4) & 0x0F));
 
-        // Extract bits for this row from all 8 columns of font
-        for (col = 0; col < 8; col++)
-        {
-            if (font_8x8[font_index][col] & (1 << row))
-            {
-                row_data |= (1 << col);
-            }
-        }
-
-        // Set position for this row
-        SSD1306_Write(true, 0xB0 + page);
-        SSD1306_Write(true, 0x00 + (x & 0x0F));
-        SSD1306_Write(true, 0x10 + ((x >> 4) & 0x0F));
-
-        SSD1306_Write(false, row_data);
+        SSD1306_Write(false, font_8x8[font_index][i]);
     }
 }
 
-/* ✅ IMPROVED: Hiển thị text với scroll ngang mượt mà */
+/* ✅ SỬA: Hiển thị text với scroll NGANG thay vì dọc */
 void display_scrolled_text(void)
 {
     int char_pos = 0;
@@ -141,20 +78,17 @@ void display_scrolled_text(void)
 
     oled_clear_screen();
 
-    // Scroll ngang: text di chuyển từ phải sang trái
-    display_x = 128 - scroll_offset; // Bắt đầu từ bên phải màn hình
+    /* ✅ SCROLL NGANG: text di chuyển từ trái sang phải */
+    display_x = -scroll_offset;
 
-    for (char_pos = 0; char_pos < text_length; char_pos++)
+    /* Hiển thị text trên page 0 */
+    for (char_pos = 0; char_pos < text_length && display_x < 128; char_pos++)
     {
-        // Chỉ vẽ nếu ký tự nằm trong vùng nhìn thấy
-        if (display_x >= -8 && display_x < 128)
+        if (display_x + 8 > 0) /* Chỉ vẽ nếu ký tự có thể nhìn thấy */
         {
-            draw_char_rotated(display_x, 1, display_text[char_pos]); // Page 1 (gần đầu màn hình)
+            draw_char_at_position(display_x, 0, display_text[char_pos]);
         }
-
-        display_x += 8; // Mỗi ký tự cách nhau 8 pixel
-
-        // Tiếp tục vẽ ngay cả khi vượt quá để có continuous scroll
+        display_x += 8; /* Mỗi ký tự cách nhau 8 pixel */
     }
 }
 
@@ -168,8 +102,8 @@ static void scroll_work_handler(struct work_struct *work)
     {
         scroll_offset++;
 
-        // Reset khi scroll hết text + thêm buffer
-        if (scroll_offset >= (text_length * 8 + 256))
+        /* ✅ SỬA: Reset logic đơn giản */
+        if (scroll_offset >= (text_length * 8 + 128))
         {
             scroll_offset = 0;
         }
@@ -192,29 +126,25 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
     {
         switch (param->value)
         {
-        case 103: /* UP arrow - scroll faster */
+        case 103:               /* UP arrow - scroll lên */
+            scroll_offset -= 8; /* ✅ SỬA: theo pixel thay vì page */
+            if (scroll_offset < 0)
+                scroll_offset = 0;
             if (!auto_scroll)
-            {
-                scroll_offset -= 8;
-                if (scroll_offset < 0)
-                    scroll_offset = 0;
                 display_scrolled_text();
-            }
             printk(KERN_INFO "Scroll UP: offset = %d\n", scroll_offset);
             break;
 
-        case 108: /* DOWN arrow - scroll slower */
+        case 108:               /* DOWN arrow - scroll xuống */
+            scroll_offset += 8; /* ✅ SỬA: theo pixel */
+            if (scroll_offset >= (text_length * 8))
+                scroll_offset = text_length * 8 - 1;
             if (!auto_scroll)
-            {
-                scroll_offset += 8;
-                if (scroll_offset >= (text_length * 8 + 256))
-                    scroll_offset = text_length * 8 + 255;
                 display_scrolled_text();
-            }
             printk(KERN_INFO "Scroll DOWN: offset = %d\n", scroll_offset);
             break;
 
-        case 57: /* SPACE - toggle auto scroll */
+        case 57: /* SPACE */
             auto_scroll = !auto_scroll;
             printk(KERN_INFO "Auto scroll: %s\n", auto_scroll ? "ON" : "OFF");
             if (auto_scroll && module_active)
@@ -223,31 +153,24 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
             }
             break;
 
-        case 1: /* ESC - reset display */
+        case 1: /* ESC */
             scroll_offset = 0;
-            oled_reset_display();
             display_scrolled_text();
-            printk(KERN_INFO "Display RESET\n");
+            printk(KERN_INFO "Scroll RESET\n");
             break;
 
-        case 105: /* LEFT arrow - increase speed (decrease delay) */
-            scroll_speed -= 50;
+        case 105:               /* LEFT arrow */
+            scroll_speed -= 50; /* ✅ SỬA: logic ngược lại */
             if (scroll_speed < 50)
                 scroll_speed = 50;
-            printk(KERN_INFO "Scroll speed: %d ms (faster)\n", scroll_speed);
+            printk(KERN_INFO "Scroll speed: %d ms\n", scroll_speed);
             break;
 
-        case 106: /* RIGHT arrow - decrease speed (increase delay) */
-            scroll_speed += 50;
+        case 106:               /* RIGHT arrow */
+            scroll_speed += 50; /* ✅ SỬA: logic ngược lại */
             if (scroll_speed > 500)
                 scroll_speed = 500;
-            printk(KERN_INFO "Scroll speed: %d ms (slower)\n", scroll_speed);
-            break;
-
-        case 16: /* Q key - quick test */
-            printk(KERN_INFO "Quick test - resetting orientation\n");
-            oled_reset_display();
-            display_scrolled_text();
+            printk(KERN_INFO "Scroll speed: %d ms\n", scroll_speed);
             break;
         }
     }
@@ -268,7 +191,6 @@ static int __init scroll_module_init(void)
     printk(KERN_INFO "=== SCROLL TEXT MODULE ===\n");
     printk(KERN_INFO "Team: %s\n", display_text);
     printk(KERN_INFO "Text length: %d characters\n", text_length);
-    printk(KERN_INFO "Scroll speed: %d ms\n", scroll_speed);
 
     scroll_wq = create_singlethread_workqueue("scroll_workqueue");
     if (!scroll_wq)
@@ -287,34 +209,26 @@ static int __init scroll_module_init(void)
         return ret;
     }
 
-    // Wait a bit for display to stabilize
-    msleep(100);
-
-    // Initialize with proper orientation
-    fix_display_orientation();
     display_scrolled_text();
-
-    // Start auto scroll after 2 seconds
     queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(2000));
 
     printk(KERN_INFO "Scroll module loaded successfully!\n");
-    printk(KERN_INFO "Controls: SPACE=toggle, ESC=reset, UP/DOWN=manual, LEFT/RIGHT=speed, Q=test\n");
     return 0;
 }
 
-/* Proper cleanup with display reset */
+/* ✅ SỬA: Thêm reset display đơn giản khi exit */
 static void __exit scroll_module_exit(void)
 {
-    printk(KERN_INFO "Scroll module exiting...\n");
-
     module_active = false;
 
     unregister_keyboard_notifier(&keyboard_notifier_block);
     cancel_delayed_work_sync(&scroll_work);
     destroy_workqueue(scroll_wq);
 
-    // Reset display state
-    oled_reset_display();
+    /* ✅ THÊM: Reset display state đơn giản */
+    SSD1306_Write(true, 0x20); // Set addressing mode
+    SSD1306_Write(true, 0x00); // Horizontal mode
+    oled_clear_screen();
 
     printk(KERN_INFO "Scroll module unloaded successfully!\n");
 }
