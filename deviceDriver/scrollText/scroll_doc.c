@@ -95,7 +95,7 @@ void oled_clear_screen(void)
     }
 }
 
-/* ✅ ALTERNATIVE: Render font theo column order khác */
+/* ✅ METHOD 3: Rotate font 180 degrees */
 void draw_char_at_position(int x, int page, char c)
 {
     int font_index;
@@ -109,18 +109,30 @@ void draw_char_at_position(int x, int page, char c)
     // Set page address
     SSD1306_Write(true, 0xB0 + page);
 
-    // ✅ Method 2: Render ngược column order
-    for (i = 7; i >= 0; i--) // Ngược từ 7 về 0
+    // ✅ Method 3: Render font rotated 180°
+    for (i = 0; i < 8; i++)
     {
-        int col_pos = x + (7 - i);
-        if (col_pos >= 128 || col_pos < 0)
-            continue;
+        if ((x + i) >= 128)
+            break;
 
         // Set column address
-        SSD1306_Write(true, 0x00 + (col_pos & 0x0F));
-        SSD1306_Write(true, 0x10 + ((col_pos >> 4) & 0x0F));
+        SSD1306_Write(true, 0x00 + ((x + i) & 0x0F));
+        SSD1306_Write(true, 0x10 + (((x + i) >> 4) & 0x0F));
 
-        SSD1306_Write(false, font_8x8[font_index][i]);
+        // Use font data from opposite column and flip bits
+        unsigned char font_data = font_8x8[font_index][7 - i];
+        unsigned char flipped_data = 0;
+        int bit;
+
+        for (bit = 0; bit < 8; bit++)
+        {
+            if (font_data & (1 << bit))
+            {
+                flipped_data |= (1 << (7 - bit));
+            }
+        }
+
+        SSD1306_Write(false, flipped_data);
     }
 }
 
