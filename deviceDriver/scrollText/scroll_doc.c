@@ -349,8 +349,8 @@ static void precompute_transposed_fonts(void)
     printk(KERN_INFO "Font transpose completed!\n");
 }
 
-/* ✅ OPTIMIZED: Clear chỉ 1 page thay vì toàn bộ màn hình */
-void clear_page(int page)
+/* ✅ FIXED: Đổi tên tránh conflict với kernel clear_page() */
+void oled_clear_page(int page)
 {
     int col;
 
@@ -370,7 +370,7 @@ void oled_clear_screen(void)
     int page;
     for (page = 0; page < 8; page++)
     {
-        clear_page(page);
+        oled_clear_page(page);
     }
 }
 
@@ -409,7 +409,7 @@ void display_scrolled_text(void)
     int display_x = 0;
 
     /* ✅ Clear chỉ page 0 thay vì toàn bộ màn hình */
-    clear_page(0);
+    oled_clear_page(0); // ✅ FIXED: dùng oled_clear_page
 
     /* ✅ SCROLL NGANG: text di chuyển từ trái sang phải */
     display_x = -scroll_offset;
@@ -508,7 +508,7 @@ static int keyboard_notify(struct notifier_block *nblock, unsigned long code, vo
 
         case 16: /* Q - test performance */
             printk(KERN_INFO "Performance test: Drawing characters...\n");
-            clear_page(0);
+            oled_clear_page(0); // ✅ FIXED: dùng oled_clear_page
 
             /* ✅ Test optimized drawing */
             draw_char_at_position(0, 0, 'N');
