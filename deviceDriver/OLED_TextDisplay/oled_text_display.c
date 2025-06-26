@@ -1,506 +1,326 @@
-/***************************************************************************/ /**
-                                                                               *  \file       oled_text_display.c
-                                                                               *
-                                                                               *  \details    OLED Text Display Driver with Line Navigation and Auto-scrolling
-                                                                               *
-                                                                               *  \author     Nhom 5
-                                                                               *
-                                                                               *  \Tested with Linux raspberrypi 5.4.51-v7l+
-                                                                               *
-                                                                               *******************************************************************************/
 #include <linux/module.h>
-#include <linux/init.h>
-#include <linux/slab.h>
-#include <linux/i2c.h>
-#include <linux/delay.h>
 #include <linux/kernel.h>
-#include <linux/proc_fs.h>
-#include <linux/uaccess.h>
-#include <linux/timer.h>
+#include <linux/init.h>
+#include <linux/keyboard.h>
+#include <linux/notifier.h>
+#include <linux/workqueue.h>
+#include <linux/delay.h>
 #include <linux/string.h>
+#include "font_chars.h"
 
-#define I2C_BUS_AVAILABLE (1)          // I2C Bus available in our Raspberry Pi
-#define SLAVE_DEVICE_NAME ("ETX_OLED") // Device and Driver Name
-#define SSD1306_SLAVE_ADDR (0x3C)      // SSD1306 OLED Slave Address
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Group 3 L01");
+MODULE_DESCRIPTION("Scroll text display for team members - HYBRID OPTIMIZED");
+MODULE_VERSION("2.1");
 
-#define OLED_WIDTH 128
-#define OLED_HEIGHT 64
-#define OLED_PAGES 8 // 64 pixels / 8 bits per page = 8 pages
+extern void SSD1306_Write(bool is_cmd, unsigned char data);
 
-#define CHAR_WIDTH 6
-#define CHAR_HEIGHT 8
-#define MAX_CHARS_PER_LINE 21 // 128 / 6 = 21.33, so we can fit 21 characters per line
+/* Text hiển thị thông tin nhóm */
+static char display_text[] = "NHOM 3 LOP L01: TO QUANG VIEN, BUI DUC KHANH, NGUYEN THI HONG NGAN, THAN NHAN CHINH    ";
+static int scroll_offset = 0;
+static int text_length;
+static int scroll_speed = 150; // ✅ Optimized speed
 
-#define MAX_LINES 6    // Number of lines we want to display
-#define SCROLL_SPEED 5 // Delay between scrolling steps (in jiffies)
+/* Timer cho auto scroll */
+static struct workqueue_struct *scroll_wq;
+static struct delayed_work scroll_work;
+static bool auto_scroll = true;
+static bool module_active = true;
 
-static struct i2c_adapter *etx_i2c_adapter = NULL;    // I2C Adapter Structure
-static struct i2c_client *etx_i2c_client_oled = NULL; // I2C Client Structure (OLED)
-static struct proc_dir_entry *oled_proc_entry;        // Proc file entry
+/* ✅ PRE-COMPUTED TRANSPOSED FONTS từ code mới */
+static uint8_t transposed_font[40][8];
 
-// Font data - 5x7 font (first 128 ASCII characters)
-extern unsigned char font5x7[];
-
-// The text lines to display
-static char *text_lines[MAX_LINES] = {
-    "Driver - L01",
-    "NHOM 5",
-    "Thanh vien 1: Bui Duc Khanh CT060119",
-    "Thanh vien 2: Bui Duc Khanh CT060119",
-    "Thanh vien 3: Bui Duc Khanh CT060119",
-    "Bui Duc Khanh CT060119"};
-
-// Current state variables
-static int current_line = 0;                  // Currently selected line (0 to MAX_LINES-1)
-static int scroll_positions[MAX_LINES] = {0}; // Horizontal scroll position for each line
-static struct timer_list scroll_timer;        // Timer for scrolling
-
-// Buffer for the OLED display
-static unsigned char display_buffer[OLED_WIDTH * OLED_PAGES];
-
-/*
-** This function writes the data into the I2C client
-**
-**  Arguments:
-**      buff -> buffer to be sent
-**      len  -> Length of the data
-**
-*/
-static int I2C_Write(unsigned char *buf, unsigned int len)
+/* ✅ PRE-COMPUTE TRANSPOSE lúc init để tránh lag */
+static void precompute_transposed_fonts(void)
 {
-    /*
-    ** Sending Start condition, Slave address with R/W bit,
-    ** ACK/NACK and Stop condtions will be handled internally.
-    */
-    int ret = i2c_master_send(etx_i2c_client_oled, buf, len);
+    int char_idx, i, j;
 
-    return ret;
-}
+    printk(KERN_INFO "Pre-computing transposed fonts...\n");
 
-/*
-** This function is specific to the SSD_1306 OLED.
-** This function sends the command/data to the OLED.
-**
-**  Arguments:
-**      is_cmd -> true = command, false = data
-**      data   -> data to be written
-**
-*/
-static void SSD1306_Write(bool is_cmd, unsigned char data)
-{
-    unsigned char buf[2] = {0};
-    int ret;
-
-    /*
-    ** First byte is always control byte. Data is followed after that.
-    **
-    ** There are two types of data in SSD_1306 OLED.
-    ** 1. Command
-    ** 2. Data
-    **
-    ** Control byte decides that the next byte is, command or data.
-    **
-    ** -------------------------------------------------------
-    ** |              Control byte's | 6th bit  |   7th bit  |
-    ** |-----------------------------|----------|------------|
-    ** |   Command                   |   0      |     0      |
-    ** |-----------------------------|----------|------------|
-    ** |   data                      |   1      |     0      |
-    ** |-----------------------------|----------|------------|
-    **
-    ** Please refer the datasheet for more information.
-    **
-    */
-    if (is_cmd == true)
+    for (char_idx = 0; char_idx < 40; char_idx++)
     {
-        buf[0] = 0x00;
-    }
-    else
-    {
-        buf[0] = 0x40;
-    }
-
-    buf[1] = data;
-
-    ret = I2C_Write(buf, 2);
-}
-
-/*
-** This function sends multiple data bytes to the OLED
-*/
-static void SSD1306_WriteMultipleData(unsigned char *data, size_t size)
-{
-    unsigned char *buf = kmalloc(size + 1, GFP_KERNEL);
-
-    if (buf)
-    {
-        buf[0] = 0x40; // Control byte for data
-        memcpy(buf + 1, data, size);
-
-        I2C_Write(buf, size + 1);
-        kfree(buf);
-    }
-}
-
-/*
-** This function sends the commands that need to initialize the OLED.
-*/
-static int SSD1306_DisplayInit(void)
-{
-    msleep(100); // delay
-
-    /*
-    ** Commands to initialize the SSD_1306 OLED Display
-    */
-    SSD1306_Write(true, 0xAE); // Entire Display OFF
-    SSD1306_Write(true, 0xD5); // Set Display Clock Divide Ratio and Oscillator Frequency
-    SSD1306_Write(true, 0x80); // Default Setting for Display Clock Divide Ratio and Oscillator Frequency
-    SSD1306_Write(true, 0xA8); // Set Multiplex Ratio
-    SSD1306_Write(true, 0x3F); // 64 COM lines
-    SSD1306_Write(true, 0xD3); // Set display offset
-    SSD1306_Write(true, 0x00); // 0 offset
-    SSD1306_Write(true, 0x40); // Set first line as the start line of the display
-    SSD1306_Write(true, 0x8D); // Charge pump
-    SSD1306_Write(true, 0x14); // Enable charge dump during display on
-    SSD1306_Write(true, 0x20); // Set memory addressing mode
-    SSD1306_Write(true, 0x00); // Horizontal addressing mode
-    SSD1306_Write(true, 0xA1); // Set segment remap with column address 127 mapped to segment 0
-    SSD1306_Write(true, 0xC8); // Set com output scan direction, scan from com63 to com 0
-    SSD1306_Write(true, 0xDA); // Set com pins hardware configuration
-    SSD1306_Write(true, 0x12); // Alternative com pin configuration, disable com left/right remap
-    SSD1306_Write(true, 0x81); // Set contrast control
-    SSD1306_Write(true, 0x80); // Set Contrast to 128
-    SSD1306_Write(true, 0xD9); // Set pre-charge period
-    SSD1306_Write(true, 0xF1); // Phase 1 period of 15 DCLK, Phase 2 period of 1 DCLK
-    SSD1306_Write(true, 0xDB); // Set Vcomh deselect level
-    SSD1306_Write(true, 0x20); // Vcomh deselect level ~ 0.77 Vcc
-    SSD1306_Write(true, 0xA4); // Entire display ON, resume to RAM content display
-    SSD1306_Write(true, 0xA6); // Set Display in Normal Mode, 1 = ON, 0 = OFF
-    SSD1306_Write(true, 0x2E); // Deactivate scroll
-    SSD1306_Write(true, 0xAF); // Display ON in normal mode
-
-    return 0;
-}
-
-/*
-** Clear the display buffer
-*/
-static void clear_display_buffer(void)
-{
-    memset(display_buffer, 0, sizeof(display_buffer));
-}
-
-/*
-** Send the display buffer to the OLED
-*/
-static void update_display(void)
-{
-    // Set column address range from 0 to 127
-    SSD1306_Write(true, 0x21);
-    SSD1306_Write(true, 0x00);
-    SSD1306_Write(true, 0x7F);
-
-    // Set page address range from 0 to 7
-    SSD1306_Write(true, 0x22);
-    SSD1306_Write(true, 0x00);
-    SSD1306_Write(true, 0x07);
-
-    // Send the buffer data
-    SSD1306_WriteMultipleData(display_buffer, sizeof(display_buffer));
-}
-
-/*
-** Draw a character at the specified position
-*/
-static void draw_char(int x, int y, char c, bool is_selected)
-{
-    int i, j;
-    unsigned char *glyph;
-
-    // Check if character is out of visible area
-    if (x < -CHAR_WIDTH || x >= OLED_WIDTH || y < 0 || y >= OLED_HEIGHT)
-    {
-        return;
-    }
-
-    // Get the character glyph from the font table
-    glyph = &font5x7[(c - 32) * 5];
-
-    // Draw the character
-    for (i = 0; i < 5; i++)
-    {
-        if (x + i >= 0 && x + i < OLED_WIDTH)
+        for (i = 0; i < 8; i++)
         {
+            transposed_font[char_idx][i] = 0;
             for (j = 0; j < 8; j++)
             {
-                if (glyph[i] & (1 << j))
+                if (font_8x8[char_idx][j] & (1 << (7 - i)))
                 {
-                    // Calculate the position in the buffer
-                    int pos = x + i + ((y + j) / 8) * OLED_WIDTH;
-                    if (pos >= 0 && pos < sizeof(display_buffer))
-                    {
-                        display_buffer[pos] |= 1 << ((y + j) % 8);
-                    }
+                    transposed_font[char_idx][i] |= (1 << j);
                 }
             }
         }
     }
 
-    // If this is the selected line and not scrolling, add dot markers
-    if (is_selected && (strlen(text_lines[current_line]) <= MAX_CHARS_PER_LINE))
+    printk(KERN_INFO "Font transpose completed!\n");
+}
+
+/* ✅ OPTIMIZED: Clear chỉ 1 page */
+void oled_clear_page(int page)
+{
+    int col;
+
+    SSD1306_Write(true, 0xB0 + page);
+    SSD1306_Write(true, 0x00);
+    SSD1306_Write(true, 0x10);
+
+    for (col = 0; col < 128; col++)
     {
-        // Draw "..." at the end of the line
-        if (x + 5 < OLED_WIDTH - 10)
-        { // Make sure we have space for ...
-            for (i = 0; i < 3; i++)
-            {
-                int dot_x = OLED_WIDTH - 10 + (i * 3);
-                int dot_y = y + 4; // Middle of character height
-                int pos = dot_x + (dot_y / 8) * OLED_WIDTH;
-                if (pos >= 0 && pos < sizeof(display_buffer))
-                {
-                    display_buffer[pos] |= 1 << (dot_y % 8);
-                }
-            }
-        }
+        SSD1306_Write(false, 0x00);
     }
 }
 
-/*
-** Draw a text string at the specified position
-*/
-static void draw_string(int x, int y, char *str, bool is_selected)
+/* Clear toàn bộ màn hình OLED */
+void oled_clear_screen(void)
 {
-    int i = 0;
-
-    while (str[i] != '\0')
+    int page;
+    for (page = 0; page < 8; page++)
     {
-        draw_char(x + (i * CHAR_WIDTH), y, str[i], is_selected);
-        i++;
+        oled_clear_page(page);
     }
 }
 
-/*
-** Update the display with the current state
-*/
-static void refresh_display(void)
+/* ✅ OPTIMIZED: Draw character với pre-computed transpose */
+void draw_char_at_position(int x, int page, char c)
 {
+    int font_index;
     int i;
-    int y_position;
 
-    // Clear the display buffer
-    clear_display_buffer();
+    if (x >= 128 || x < 0 || page >= 8 || page < 0)
+        return;
 
-    // Draw each line of text
-    for (i = 0; i < MAX_LINES; i++)
+    font_index = char_to_index(c);
+
+    /* ✅ Sử dụng pre-computed transpose - SIÊU NHANH! */
+    SSD1306_Write(true, 0xB0 + page); // Set page address
+
+    for (i = 0; i < 8; i++)
     {
-        y_position = i * CHAR_HEIGHT;
+        if ((x + i) >= 128)
+            break;
 
-        if (i == current_line)
-        {
-            // This is the selected line, apply scroll position if needed
-            draw_string(-scroll_positions[i], y_position, text_lines[i], true);
-        }
-        else
-        {
-            // Non-selected lines are always displayed from the beginning
-            draw_string(0, y_position, text_lines[i], false);
-        }
+        /* Set column address */
+        SSD1306_Write(true, 0x00 + ((x + i) & 0x0F));
+        SSD1306_Write(true, 0x10 + (((x + i) >> 4) & 0x0F));
+
+        /* ✅ Gửi pre-computed data */
+        SSD1306_Write(false, transposed_font[font_index][i]);
     }
-
-    // Update the physical display
-    update_display();
 }
 
-/*
-** Timer function for scrolling text
-*/
-static void scroll_timer_function(struct timer_list *t)
+/* ✅ OPTIMIZED: Display scroll với performance cao */
+void display_scrolled_text(void)
 {
-    int text_length = strlen(text_lines[current_line]);
-    int max_scroll = (text_length * CHAR_WIDTH) - OLED_WIDTH + 10; // +10 for padding
+    int char_pos = 0;
+    int display_x = 0;
 
-    // Only scroll if the text is longer than the display width
-    if (text_length > MAX_CHARS_PER_LINE)
+    /* ✅ Clear chỉ page 0 */
+    oled_clear_page(0);
+
+    /* ✅ SCROLL NGANG: text di chuyển từ trái sang phải */
+    display_x = -scroll_offset;
+
+    /* Hiển thị text trên page 0 */
+    for (char_pos = 0; char_pos < text_length && display_x < 128; char_pos++)
     {
-        // Update scroll position
-        scroll_positions[current_line] += 1;
-
-        // Reset scroll position when reaching the end
-        if (scroll_positions[current_line] > max_scroll)
+        if (display_x + 8 > 0) /* Chỉ vẽ nếu ký tự có thể nhìn thấy */
         {
-            scroll_positions[current_line] = 0;
+            draw_char_at_position(display_x, 0, display_text[char_pos]);
         }
-
-        // Refresh the display with new scroll position
-        refresh_display();
+        display_x += 8; /* Mỗi ký tự cách nhau 8 pixel */
     }
-
-    // Restart the timer
-    mod_timer(&scroll_timer, jiffies + SCROLL_SPEED);
 }
 
-/*
-** Process file operation for proc interface
-*/
-static ssize_t oled_proc_write(struct file *file, const char __user *buf,
-                               size_t count, loff_t *ppos)
+/* ✅ Timer handler với optimized step */
+static void scroll_work_handler(struct work_struct *work)
 {
-    char command;
+    if (!module_active)
+        return;
 
-    if (count < 1)
-        return -EINVAL;
-
-    if (copy_from_user(&command, buf, 1))
-        return -EFAULT;
-
-    switch (command)
+    if (auto_scroll)
     {
-    case 'u': // Move up
-        if (current_line > 0)
-        {
-            current_line--;
-            refresh_display();
-        }
-        break;
+        scroll_offset += 4; /* ✅ Scroll 4 pixel mỗi lần - mượt và nhanh */
 
-    case 'd': // Move down
-        if (current_line < MAX_LINES - 1)
+        /* Reset khi scroll hết text */
+        if (scroll_offset >= (text_length * 8 + 128))
         {
-            current_line++;
-            refresh_display();
+            scroll_offset = 0;
         }
-        break;
 
-    default:
-        break;
+        display_scrolled_text();
     }
 
-    return count;
+    if (module_active)
+    {
+        queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(scroll_speed));
+    }
 }
 
-// Proc file operations structure
-static const struct proc_ops oled_proc_fops = {
-    .proc_write = oled_proc_write,
+/* ✅ KEYBOARD LOGIC TỪ CODE CŨ - đơn giản và working */
+static int keyboard_notify(struct notifier_block *nblock, unsigned long code, void *_param)
+{
+    struct keyboard_notifier_param *param = _param;
+
+    if (code == KBD_KEYCODE && param->down)
+    {
+        switch (param->value)
+        {
+        case 103: /* UP arrow - manual scroll up */
+            if (!auto_scroll)
+            {
+                scroll_offset -= 8; /* ✅ Scroll 8 pixel mỗi lần */
+                if (scroll_offset < 0)
+                    scroll_offset = 0;
+                display_scrolled_text();
+            }
+            printk(KERN_INFO "Scroll UP: offset = %d\n", scroll_offset);
+            break;
+
+        case 108: /* DOWN arrow - manual scroll down */
+            if (!auto_scroll)
+            {
+                scroll_offset += 8; /* ✅ Scroll 8 pixel mỗi lần */
+                if (scroll_offset >= (text_length * 8))
+                    scroll_offset = text_length * 8 - 1;
+                display_scrolled_text();
+            }
+            printk(KERN_INFO "Scroll DOWN: offset = %d\n", scroll_offset);
+            break;
+
+        case 57: /* SPACE - toggle auto scroll */
+            auto_scroll = !auto_scroll;
+            printk(KERN_INFO "Auto scroll: %s\n", auto_scroll ? "ON" : "OFF");
+            /* ✅ LOGIC TỪ CODE CŨ - không cancel work */
+            if (auto_scroll && module_active)
+            {
+                queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(scroll_speed));
+            }
+            break;
+
+        case 1: /* ESC - reset scroll */
+            scroll_offset = 0;
+            display_scrolled_text();
+            printk(KERN_INFO "Scroll RESET\n");
+            break;
+
+        case 105: /* LEFT arrow - increase speed (decrease delay) */
+            scroll_speed -= 25;
+            if (scroll_speed < 50)
+                scroll_speed = 50;
+            printk(KERN_INFO "Scroll speed: %d ms (faster)\n", scroll_speed);
+            break;
+
+        case 106: /* RIGHT arrow - decrease speed (increase delay) */
+            scroll_speed += 25;
+            if (scroll_speed > 500)
+                scroll_speed = 500;
+            printk(KERN_INFO "Scroll speed: %d ms (slower)\n", scroll_speed);
+            break;
+
+        case 16: /* Q - test performance */
+            printk(KERN_INFO "Performance test: Drawing characters...\n");
+            oled_clear_page(0);
+
+            /* Test optimized drawing */
+            draw_char_at_position(0, 0, 'N');
+            draw_char_at_position(8, 0, 'H');
+            draw_char_at_position(16, 0, 'O');
+            draw_char_at_position(24, 0, 'M');
+            draw_char_at_position(32, 0, ' ');
+            draw_char_at_position(40, 0, '3');
+
+            printk(KERN_INFO "Performance test completed!\n");
+            break;
+        }
+    }
+
+    return NOTIFY_OK;
+}
+
+static struct notifier_block keyboard_notifier_block = {
+    .notifier_call = keyboard_notify,
 };
 
-/*
-** This function getting called when the slave has been found
-** Note : This will be called only once when we load the driver.
-*/
-static int etx_oled_probe(struct i2c_client *client,
-                          const struct i2c_device_id *id)
+/* ✅ INIT - kết hợp tốt nhất của 2 code */
+static int __init scroll_module_init(void)
 {
-    // Initialize the OLED display
-    SSD1306_DisplayInit();
+    int ret;
 
-    // Initialize the scroll timer
-    timer_setup(&scroll_timer, scroll_timer_function, 0);
-    mod_timer(&scroll_timer, jiffies + SCROLL_SPEED);
+    text_length = strlen(display_text);
 
-    // Initial display update
-    refresh_display();
+    printk(KERN_INFO "=== HYBRID OPTIMIZED SCROLL TEXT MODULE ===\n");
+    printk(KERN_INFO "Team: %s\n", display_text);
+    printk(KERN_INFO "Text length: %d characters\n", text_length);
+    printk(KERN_INFO "Scroll speed: %d ms\n", scroll_speed);
 
-    // Create proc interface for user commands
-    oled_proc_entry = proc_create("oled_control", 0666, NULL, &oled_proc_fops);
-    if (!oled_proc_entry)
+    /* ✅ PRE-COMPUTE FONTS từ code mới */
+    precompute_transposed_fonts();
+
+    /* ✅ SSD1306 Init - optimized settings */
+    SSD1306_Write(true, 0xAE); // Display OFF
+    SSD1306_Write(true, 0xA8); // Set multiplex ratio
+    SSD1306_Write(true, 0x3F); // 64 MUX
+    SSD1306_Write(true, 0xD3); // Set display offset
+    SSD1306_Write(true, 0x00); // No offset
+    SSD1306_Write(true, 0x40); // Set display start line
+    SSD1306_Write(true, 0xA1); // ✅ Segment remap
+    SSD1306_Write(true, 0xC8); // ✅ COM scan direction
+    SSD1306_Write(true, 0xDA); // Set COM pins
+    SSD1306_Write(true, 0x12);
+    SSD1306_Write(true, 0x81); // Set contrast
+    SSD1306_Write(true, 0x8F); // ✅ Higher contrast
+    SSD1306_Write(true, 0xA4); // Entire display ON
+    SSD1306_Write(true, 0xA6); // Normal display
+    SSD1306_Write(true, 0xD5); // Set display clock
+    SSD1306_Write(true, 0x80); // Default frequency
+    SSD1306_Write(true, 0x8D); // Charge pump
+    SSD1306_Write(true, 0x14); // Enable charge pump
+    SSD1306_Write(true, 0xAF); // Display ON
+
+    scroll_wq = create_singlethread_workqueue("scroll_workqueue");
+    if (!scroll_wq)
     {
-        pr_err("Failed to create proc entry\n");
+        printk(KERN_ERR "Cannot create workqueue\n");
         return -ENOMEM;
     }
 
-    pr_info("OLED Text Display Driver Probed!!!\n");
-    pr_info("Use 'echo u > /proc/oled_control' to move up\n");
-    pr_info("Use 'echo d > /proc/oled_control' to move down\n");
+    INIT_DELAYED_WORK(&scroll_work, scroll_work_handler);
 
+    ret = register_keyboard_notifier(&keyboard_notifier_block);
+    if (ret)
+    {
+        printk(KERN_ERR "Cannot register keyboard notifier\n");
+        destroy_workqueue(scroll_wq);
+        return ret;
+    }
+
+    /* ✅ Initial display */
+    display_scrolled_text();
+
+    /* ✅ Start auto scroll từ code cũ - delay 2s */
+    queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(2000));
+
+    printk(KERN_INFO "HYBRID scroll module loaded successfully!\n");
+    printk(KERN_INFO "Controls: SPACE=toggle, ESC=reset, UP/DOWN=manual, LEFT/RIGHT=speed, Q=test\n");
     return 0;
 }
 
-/*
-** This function getting called when the slave has been removed
-** Note : This will be called only once when we unload the driver.
-*/
-static void etx_oled_remove(struct i2c_client *client)
+/* ✅ EXIT - đơn giản như code cũ */
+static void __exit scroll_module_exit(void)
 {
-    // Clear the display
-    clear_display_buffer();
-    update_display();
+    module_active = false;
 
-    // Delete the timer
-    del_timer_sync(&scroll_timer);
+    unregister_keyboard_notifier(&keyboard_notifier_block);
+    cancel_delayed_work_sync(&scroll_work);
+    destroy_workqueue(scroll_wq);
 
-    // Remove proc entry
-    proc_remove(oled_proc_entry);
+    /* Clean exit */
+    SSD1306_Write(true, 0x20); // Set memory addressing mode
+    SSD1306_Write(true, 0x00); // Horizontal addressing mode
+    oled_clear_screen();
 
-    pr_info("OLED Text Display Driver Removed!!!\n");
+    printk(KERN_INFO "HYBRID scroll module unloaded successfully!\n");
 }
 
-/*
-** Structure that has slave device id
-*/
-static const struct i2c_device_id etx_oled_id[] = {
-    {SLAVE_DEVICE_NAME, 0},
-    {}};
-MODULE_DEVICE_TABLE(i2c, etx_oled_id);
-
-/*
-** I2C driver Structure that has to be added to linux
-*/
-static struct i2c_driver etx_oled_driver = {
-    .driver = {
-        .name = SLAVE_DEVICE_NAME,
-        .owner = THIS_MODULE,
-    },
-    .probe = etx_oled_probe,
-    .remove = etx_oled_remove,
-    .id_table = etx_oled_id,
-};
-
-/*
-** I2C Board Info structure
-*/
-static struct i2c_board_info oled_i2c_board_info = {
-    I2C_BOARD_INFO(SLAVE_DEVICE_NAME, SSD1306_SLAVE_ADDR)};
-
-/*
-** Module Init function
-*/
-static int __init etx_driver_init(void)
-{
-    int ret = -1;
-    etx_i2c_adapter = i2c_get_adapter(I2C_BUS_AVAILABLE);
-
-    if (etx_i2c_adapter != NULL)
-    {
-        etx_i2c_client_oled = i2c_new_client_device(etx_i2c_adapter, &oled_i2c_board_info);
-
-        if (etx_i2c_client_oled != NULL)
-        {
-            i2c_add_driver(&etx_oled_driver);
-            ret = 0;
-        }
-
-        i2c_put_adapter(etx_i2c_adapter);
-    }
-
-    pr_info("OLED Text Display Driver Added!!!\n");
-    return ret;
-}
-
-/*
-** Module Exit function
-*/
-static void __exit etx_driver_exit(void)
-{
-    i2c_unregister_device(etx_i2c_client_oled);
-    i2c_del_driver(&etx_oled_driver);
-    pr_info("OLED Text Display Driver Removed!!!\n");
-}
-
-module_init(etx_driver_init);
-module_exit(etx_driver_exit);
-
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Nhom 5");
-MODULE_DESCRIPTION("OLED Text Display Driver with Line Navigation and Auto-scrolling");
-MODULE_VERSION("1.0");
+module_init(scroll_module_init);
+module_exit(scroll_module_exit);
