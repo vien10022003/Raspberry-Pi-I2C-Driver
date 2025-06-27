@@ -10,7 +10,6 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/delay.h>
-#include <stdbool.h>
 #include "font_chars.h"
 
 // External function from I2C driver
@@ -136,4 +135,5 @@ module_exit(text_display_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Bui Duc Khanh");
 MODULE_DESCRIPTION("OLED Text Display for SSD1306");
+MODULE_VERSION("1.0");
 MODULE_VERSION("1.0");

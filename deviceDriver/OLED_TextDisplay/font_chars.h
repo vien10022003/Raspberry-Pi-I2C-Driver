@@ -3,7 +3,7 @@
 
 #include <linux/types.h>
 
-const uint8_t font_8x8[][8] = {
+static const uint8_t font_8x8[][8] = {
     // A (index 0)
     {0x00, 0x18, 0x3C, 0x66, 0x7E, 0x66, 0x66, 0x00},
     // B (index 1)
@@ -86,7 +86,7 @@ const uint8_t font_8x8[][8] = {
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x00}};
 
 // Hàm chuyển ký tự thành index font
-int char_to_index(char c)
+static inline int char_to_index(char c)
 {
     if (c >= 'A' && c <= 'Z')
         return c - 'A';
