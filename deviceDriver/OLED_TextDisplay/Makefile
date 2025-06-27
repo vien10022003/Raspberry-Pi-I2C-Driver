@@ -1,10 +1,9 @@
 obj-m += text_display.o
 
-# Add the path to the SSD1306 driver directory
-EXTRA_CFLAGS += -I$(PWD)/../SSD1306_OLED_Driver/
+KDIR = /lib/modules/$(shell uname -r)/build
 
 all:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+	make -C $(KDIR) M=$(shell pwd) modules
 
 clean:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+	make -C $(KDIR) M=$(shell pwd) clean

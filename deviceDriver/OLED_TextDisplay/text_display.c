@@ -1,60 +1,58 @@
 /***************************************************************************/ /**
                                                                                *  \file       text_display.c
                                                                                *
-                                                                               *  \details    SSD1306 OLED Text Display Driver using I2C interface
-                                                                                                                                        ERROR: modpost: "SSD1306_Write" [/home/pi/.../text_display.ko] undefined!                   *
+                                                                               *  \details    Text display driver for SSD1306 OLED using I2C
+                                                                               *
+                                                                               *  \author     Bui Duc Khanh
+                                                                               *
                                                                                * *******************************************************************************/
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/delay.h>
+#include <stdbool.h>
 #include "font_chars.h"
 
 // External function from I2C driver
 extern void SSD1306_Write(bool is_cmd, unsigned char data);
-extern int SSD1306_Write(const char *buf, size_t count);
 
 /*
-** Set the cursor position on OLED
-** page: 0-7 (8 pages, each 8 pixels height)
-** column: 0-127 (128 pixels width)
+** This function sets the cursor position for text display
 */
-void SSD1306_SetCursor(unsigned char page, unsigned char column)
+static void SSD1306_SetCursor(unsigned char page, unsigned char column)
 {
-    // Set page address
-    SSD1306_Write(true, 0xB0 | page);
+    // Set page address (0-7)
+    SSD1306_Write(true, 0xB0 | (page & 0x07));
 
-    // Set column address (lower 4 bits)
+    // Set column lower address
     SSD1306_Write(true, 0x00 | (column & 0x0F));
 
-    // Set column address (upper 4 bits)
+    // Set column higher address
     SSD1306_Write(true, 0x10 | ((column >> 4) & 0x0F));
 }
-EXPORT_SYMBOL(SSD1306_SetCursor);
 
 /*
-** Clear the entire OLED display
+** This function clears the OLED display
 */
-void SSD1306_Clear(void)
+static void SSD1306_Clear(void)
 {
-    int i, j;
+    unsigned char page, column;
 
-    for (i = 0; i < 8; i++)
+    for (page = 0; page < 8; page++)
     {
-        SSD1306_SetCursor(i, 0);
+        SSD1306_SetCursor(page, 0);
 
-        for (j = 0; j < 128; j++)
+        for (column = 0; column < 128; column++)
         {
             SSD1306_Write(false, 0x00);
         }
     }
 }
-EXPORT_SYMBOL(SSD1306_Clear);
 
 /*
-** Draw a single character on the OLED
+** This function displays a character on the OLED
 */
-void SSD1306_DrawChar(char c)
+static void SSD1306_DrawChar(char c)
 {
     int font_index = char_to_index(c);
     int i;
@@ -64,66 +62,67 @@ void SSD1306_DrawChar(char c)
         SSD1306_Write(false, font_8x8[font_index][i]);
     }
 }
-EXPORT_SYMBOL(SSD1306_DrawChar);
 
 /*
-** Draw a string on the OLED at the specified position
-** If the string exceeds the display width, it will wrap to the next page
+** This function displays a string on the OLED
 */
-void SSD1306_DrawString(const char *str, unsigned char page, unsigned char column)
+static void SSD1306_DrawString(const char *str, unsigned char page, unsigned char column)
 {
     int i = 0;
-    int current_column = column;
-    int current_page = page;
 
-    SSD1306_SetCursor(current_page, current_column);
+    SSD1306_SetCursor(page, column);
 
     while (str[i] != '\0')
     {
         SSD1306_DrawChar(str[i]);
-        current_column += 8; // Each character is 8 pixels wide
-
-        // If we reach the end of the line, move to next page
-        if (current_column > 120)
-        {
-            current_column = 0;
-            current_page++;
-
-            if (current_page > 7)
-            {
-                break; // Out of display bounds
-            }
-
-            SSD1306_SetCursor(current_page, current_column);
-        }
-
         i++;
+        column += 8; // Each character is 8 pixels wide
+
+        // Check if we need to move to the next line
+        if (column > 120)
+        {
+            column = 0;
+            page++;
+            if (page < 8) // Make sure we don't exceed the display
+            {
+                SSD1306_SetCursor(page, column);
+            }
+            else
+            {
+                break;
+            }
+        }
     }
 }
-EXPORT_SYMBOL(SSD1306_DrawString);
 
 /*
-** Display the text "bui duc khanh" on the OLED
+** This function displays "bui duc khanh" on the OLED
 */
-void SSD1306_DisplayBuiDucKhanh(void)
+static void display_text(void)
 {
+    // Clear the display first
     SSD1306_Clear();
-    SSD1306_DrawString("bui duc khanh", 3, 16); // Center on the display
+
+    // Center the text on the display (128x64 pixels)
+    // Each character is 8x8 pixels
+    // "bui duc khanh" is 13 characters, so it's 13*8 = 104 pixels wide
+    // To center horizontally: (128-104)/2 = 12
+    // To center vertically: around page 3 (middle of 8 pages)
+    SSD1306_DrawString("bui duc khanh", 3, 12);
 }
-EXPORT_SYMBOL(SSD1306_DisplayBuiDucKhanh);
 
 /*
-** Module initialization function
+** Module Init function
 */
 static int __init text_display_init(void)
 {
     pr_info("OLED Text Display Module Loaded\n");
-    SSD1306_DisplayBuiDucKhanh();
+    display_text();
     return 0;
 }
 
 /*
-** Module exit function
+** Module Exit function
 */
 static void __exit text_display_exit(void)
 {
@@ -136,5 +135,5 @@ module_exit(text_display_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Bui Duc Khanh");
-MODULE_DESCRIPTION("OLED Text Display Driver for SSD1306");
+MODULE_DESCRIPTION("OLED Text Display for SSD1306");
 MODULE_VERSION("1.0");
