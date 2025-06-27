@@ -2,7 +2,7 @@
                                                                                *  \file       text_display.c
                                                                                *
                                                                                *  \details    SSD1306 OLED Text Display Driver using I2C interface
-                                                                               *
+                                                                                                                                        ERROR: modpost: "SSD1306_Write" [/home/pi/.../text_display.ko] undefined!                   *
                                                                                * *******************************************************************************/
 #include <linux/module.h>
 #include <linux/init.h>
@@ -12,6 +12,7 @@
 
 // External function from I2C driver
 extern void SSD1306_Write(bool is_cmd, unsigned char data);
+extern int SSD1306_Write(const char *buf, size_t count);
 
 /*
 ** Set the cursor position on OLED
