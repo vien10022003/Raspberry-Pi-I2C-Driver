@@ -3,6 +3,7 @@
 #include <linux/init.h>
 #include <linux/delay.h>
 #include <linux/workqueue.h>
+#include <linux/moduleparam.h> // Add this missing header
 #include "font_chars.h"
 
 MODULE_LICENSE("GPL");
@@ -29,10 +30,33 @@ static bool stop_scrolling = false;
 #define CHAR_WIDTH 8
 #define CHAR_HEIGHT 8
 
+// Function to clear the OLED display
 static void oled_clear(void)
 {
+    int i, j;
     printk(KERN_INFO "VerticalScroll: Clearing display\n");
-    // Will implement actual clearing code in next phase
+
+    for (i = 0; i < 8; i++) // 8 pages
+    {
+        SSD1306_Write(true, 0xB0 + i); // Set page address
+        SSD1306_Write(true, 0x00);     // Set lower column address
+        SSD1306_Write(true, 0x10);     // Set higher column address
+
+        for (j = 0; j < 128; j++) // 128 columns
+        {
+            SSD1306_Write(false, 0x00); // Clear each pixel
+        }
+    }
+}
+
+// Work queue handler function (stub for now)
+static void scroll_work_handler(struct work_struct *work)
+{
+    // Will implement scrolling logic in next phase
+    if (!stop_scrolling)
+    {
+        queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(100));
+    }
 }
 
 static int __init vertical_scroll_init(void)
@@ -40,7 +64,10 @@ static int __init vertical_scroll_init(void)
     printk(KERN_INFO "VerticalScroll: Module loaded successfully\n");
     printk(KERN_INFO "VerticalScroll: Text to display: %s\n", scroll_text);
 
-    // Initialize workqueue (for future animation)
+    // Clear the OLED display
+    oled_clear();
+
+    // Initialize workqueue for future animation
     scroll_wq = create_singlethread_workqueue("scroll_workqueue");
     if (!scroll_wq)
     {
@@ -48,7 +75,10 @@ static int __init vertical_scroll_init(void)
         return -ENOMEM;
     }
 
-    printk(KERN_INFO "VerticalScroll: Initialization complete\n");
+    // Initialize the delayed work
+    INIT_DELAYED_WORK(&scroll_work, scroll_work_handler);
+
+    printk(KERN_INFO "VerticalScroll: OLED I2C initialized\n");
     return 0;
 }
 
@@ -63,6 +93,9 @@ static void __exit vertical_scroll_exit(void)
         cancel_delayed_work_sync(&scroll_work);
         destroy_workqueue(scroll_wq);
     }
+
+    // Clear the display when unloading
+    oled_clear();
 
     printk(KERN_INFO "VerticalScroll: Module unloaded successfully\n");
 }
