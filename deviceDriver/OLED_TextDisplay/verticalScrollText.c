@@ -3,7 +3,7 @@
 #include <linux/init.h>
 #include <linux/delay.h>
 #include <linux/workqueue.h>
-#include <linux/moduleparam.h> // Add this missing header
+#include <linux/moduleparam.h>
 #include "font_chars.h"
 
 MODULE_LICENSE("GPL");
@@ -49,6 +49,60 @@ static void oled_clear(void)
     }
 }
 
+// Function to display a single character at position (x, y)
+static void display_char(char c, int x, int y)
+{
+    int i, j;
+    int font_index;
+
+    // Get the font index for the character
+    if (c >= 'A' && c <= 'Z')
+        font_index = c - 'A'; // A-Z are at indices 0-25
+    else if (c >= '0' && c <= '9')
+        font_index = c - '0' + 26; // 0-9 are at indices 26-35
+    else if (c == ' ')
+        font_index = 36; // Space is at index 36
+    else
+        return; // Unsupported character
+
+    // Set the page address (y / 8)
+    SSD1306_Write(true, 0xB0 + (y / 8));
+
+    // Set column address
+    SSD1306_Write(true, 0x00 | (x & 0x0F));        // Lower column address
+    SSD1306_Write(true, 0x10 | ((x >> 4) & 0x0F)); // Higher column address
+
+    // Write the character data
+    for (j = 0; j < 8; j++) // 8 columns per character
+    {
+        SSD1306_Write(false, font_8x8[font_index][j]);
+    }
+}
+
+// Function to display a string starting at position (x, y)
+static void display_string(const char *str, int x, int y)
+{
+    int i;
+    int curr_x = x;
+
+    for (i = 0; str[i] != '\0'; i++)
+    {
+        display_char(str[i], curr_x, y);
+        curr_x += CHAR_WIDTH; // Move to the next character position
+
+        // Wrap to the next line if we reach the end of the display
+        if (curr_x >= OLED_WIDTH)
+        {
+            curr_x = 0;
+            y += CHAR_HEIGHT;
+
+            // If we've gone past the bottom of the display, stop
+            if (y >= OLED_HEIGHT)
+                break;
+        }
+    }
+}
+
 // Work queue handler function (stub for now)
 static void scroll_work_handler(struct work_struct *work)
 {
@@ -66,6 +120,11 @@ static int __init vertical_scroll_init(void)
 
     // Clear the OLED display
     oled_clear();
+
+    // Display "HELLO" on the screen
+    display_string("HELLO", 40, 28); // Center it roughly
+
+    printk(KERN_INFO "VerticalScroll: Text displayed\n");
 
     // Initialize workqueue for future animation
     scroll_wq = create_singlethread_workqueue("scroll_workqueue");
