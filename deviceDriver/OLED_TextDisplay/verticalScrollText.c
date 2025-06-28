@@ -111,8 +111,8 @@ static void oled_clear(void)
     }
 }
 
-// Function to display a single character at position (x, y)
-static void display_char(char c, int x, int y)
+// Function to display a single character at position (x, y) with inversion option
+static void display_char_with_inversion(char c, int x, int y, bool inverted)
 {
     int i, j;
     int font_index;
@@ -144,6 +144,10 @@ static void display_char(char c, int x, int y)
                 rotated_data[i] |= (1 << j);
             }
         }
+
+        // If inverted, flip all bits
+        if (inverted)
+            rotated_data[i] = ~rotated_data[i];
     }
 
     // Write each column of the rotated character to display
@@ -161,15 +165,15 @@ static void display_char(char c, int x, int y)
     }
 }
 
-// Function to display a string starting at position (x, y)
-static void display_string(const char *str, int x, int y)
+// Function to display a string starting at position (x, y) with inversion option
+static void display_string_with_inversion(const char *str, int x, int y, bool inverted)
 {
     int i;
     int curr_x = x;
 
     for (i = 0; str[i] != '\0'; i++)
     {
-        display_char(str[i], curr_x, y);
+        display_char_with_inversion(str[i], curr_x, y, inverted);
         curr_x += CHAR_WIDTH; // Move to the next character position
 
         // Wrap to the next line if we reach the end of the display
@@ -183,6 +187,18 @@ static void display_string(const char *str, int x, int y)
                 break;
         }
     }
+}
+
+// Original display_char function now calls the new function with inverted=false
+static void display_char(char c, int x, int y)
+{
+    display_char_with_inversion(c, x, y, false);
+}
+
+// Original display_string function now calls the new function with inverted=false
+static void display_string(const char *str, int x, int y)
+{
+    display_string_with_inversion(str, x, y, false);
 }
 
 // Function to clear the text buffer
@@ -220,7 +236,7 @@ static void display_text_buffer(void)
     }
 }
 
-// Update the display based on current virtual position
+// Update the display based on current virtual position with first line highlighted
 static void update_display_from_position(void)
 {
     int i;
@@ -230,7 +246,17 @@ static void update_display_from_position(void)
     for (i = 0; i < MAX_LINES; i++)
     {
         int buffer_line = (virtual_position + i) % total_lines;
-        display_string(text_buffer[buffer_line], 0, i * CHAR_HEIGHT);
+
+        // First line (selected line) is displayed inverted
+        if (i == 0)
+        {
+            display_string_with_inversion(text_buffer[buffer_line], 0, i * CHAR_HEIGHT, true);
+            printk(KERN_INFO "VerticalScroll: Selected line %d: %s\n", buffer_line, text_buffer[buffer_line]);
+        }
+        else
+        {
+            display_string(text_buffer[buffer_line], 0, i * CHAR_HEIGHT);
+        }
     }
 }
 
@@ -435,7 +461,9 @@ static void scroll_down(void)
 // Manual scroll sysfs handlers
 static ssize_t manual_scroll_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
-    return sprintf(buf, "Write 'up' or 'down' to scroll one line\n");
+    int selected_line = virtual_position % total_lines;
+    return sprintf(buf, "Selected line: %d - %s\nWrite 'up' or 'down' to scroll one line\n",
+                   selected_line, text_buffer[selected_line]);
 }
 
 static ssize_t manual_scroll_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
