@@ -60,6 +60,8 @@ static ssize_t scroll_enable_show(struct kobject *kobj, struct kobj_attribute *a
 static ssize_t scroll_enable_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
 static ssize_t display_text_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
 static ssize_t display_text_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
+static ssize_t manual_scroll_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+static ssize_t manual_scroll_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
 
 // Define sysfs attributes
 static struct kobj_attribute scroll_direction_attribute =
@@ -72,6 +74,8 @@ static struct kobj_attribute scroll_enable_attribute =
     __ATTR(enable, 0664, scroll_enable_show, scroll_enable_store);
 static struct kobj_attribute display_text_attribute =
     __ATTR(text, 0664, display_text_show, display_text_store);
+static struct kobj_attribute manual_scroll_attribute =
+    __ATTR(scroll, 0664, manual_scroll_show, manual_scroll_store);
 
 // Attribute group
 static struct attribute *attrs[] = {
@@ -80,6 +84,7 @@ static struct attribute *attrs[] = {
     &scroll_interval_attribute.attr,
     &scroll_enable_attribute.attr,
     &display_text_attribute.attr,
+    &manual_scroll_attribute.attr, // Add the new attribute
     NULL,
 };
 
@@ -395,6 +400,59 @@ static ssize_t display_text_store(struct kobject *kobj, struct kobj_attribute *a
     update_display_from_position();
 
     kfree(temp_buf);
+    return count;
+}
+
+// Manual scrolling functions
+static void scroll_up(void)
+{
+    virtual_position--;
+
+    // Handle wraparound when scrolling up
+    if (virtual_position < 0)
+        virtual_position = total_lines - 1;
+
+    // Update the display with the new position
+    update_display_from_position();
+
+    printk(KERN_INFO "VerticalScroll: Manually scrolled up to position %d\n", virtual_position);
+}
+
+static void scroll_down(void)
+{
+    virtual_position++;
+
+    // Handle wraparound when scrolling down
+    if (virtual_position >= total_lines)
+        virtual_position = 0;
+
+    // Update the display with the new position
+    update_display_from_position();
+
+    printk(KERN_INFO "VerticalScroll: Manually scrolled down to position %d\n", virtual_position);
+}
+
+// Manual scroll sysfs handlers
+static ssize_t manual_scroll_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    return sprintf(buf, "Write 'up' or 'down' to scroll one line\n");
+}
+
+static ssize_t manual_scroll_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    if (strncmp(buf, "up", 2) == 0)
+    {
+        scroll_up();
+    }
+    else if (strncmp(buf, "down", 4) == 0)
+    {
+        scroll_down();
+    }
+    else
+    {
+        return -EINVAL; // Invalid command
+    }
+
     return count;
 }
 
