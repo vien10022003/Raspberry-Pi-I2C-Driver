@@ -4,6 +4,8 @@
 #include <linux/delay.h>
 #include <linux/workqueue.h>
 #include <linux/moduleparam.h>
+#include <linux/sysfs.h>
+#include <linux/device.h>
 #include "font_chars.h"
 
 MODULE_LICENSE("GPL");
@@ -34,6 +36,55 @@ static bool stop_scrolling = false;
 
 // Text buffer to store multiple lines
 static char text_buffer[MAX_LINES][MAX_CHARS_PER_LINE + 1]; // +1 for null terminator
+
+// Scrolling control variables
+static int scroll_direction = 0;  // 0: stopped, 1: down, -1: up
+static int scroll_speed = 1;      // Lines to scroll per update
+static int scroll_interval = 500; // ms between scroll updates
+static int virtual_position = 0;  // Virtual position in the text buffer
+static int total_lines = 0;       // Total number of lines in the buffer
+static bool scrolling_enabled = false;
+
+// For sysfs
+static struct kobject *scroll_kobj;
+
+// Forward declarations for sysfs handlers
+static ssize_t scroll_direction_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+static ssize_t scroll_direction_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
+static ssize_t scroll_speed_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+static ssize_t scroll_speed_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
+static ssize_t scroll_interval_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+static ssize_t scroll_interval_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
+static ssize_t scroll_enable_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+static ssize_t scroll_enable_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
+static ssize_t display_text_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+static ssize_t display_text_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
+
+// Define sysfs attributes
+static struct kobj_attribute scroll_direction_attribute =
+    __ATTR(direction, 0664, scroll_direction_show, scroll_direction_store);
+static struct kobj_attribute scroll_speed_attribute =
+    __ATTR(speed, 0664, scroll_speed_show, scroll_speed_store);
+static struct kobj_attribute scroll_interval_attribute =
+    __ATTR(interval, 0664, scroll_interval_show, scroll_interval_store);
+static struct kobj_attribute scroll_enable_attribute =
+    __ATTR(enable, 0664, scroll_enable_show, scroll_enable_store);
+static struct kobj_attribute display_text_attribute =
+    __ATTR(text, 0664, display_text_show, display_text_store);
+
+// Attribute group
+static struct attribute *attrs[] = {
+    &scroll_direction_attribute.attr,
+    &scroll_speed_attribute.attr,
+    &scroll_interval_attribute.attr,
+    &scroll_enable_attribute.attr,
+    &display_text_attribute.attr,
+    NULL,
+};
+
+static struct attribute_group attr_group = {
+    .attrs = attrs,
+};
 
 // Function to clear the OLED display
 static void oled_clear(void)
@@ -163,14 +214,187 @@ static void display_text_buffer(void)
     }
 }
 
-// Work queue handler function (stub for now)
+// Update the display based on current virtual position
+static void update_display_from_position(void)
+{
+    int i;
+    oled_clear();
+
+    // Display MAX_LINES lines starting from virtual_position
+    for (i = 0; i < MAX_LINES; i++)
+    {
+        int buffer_line = (virtual_position + i) % total_lines;
+        display_string(text_buffer[buffer_line], 0, i * CHAR_HEIGHT);
+    }
+}
+
+// Work queue handler function for scrolling
 static void scroll_work_handler(struct work_struct *work)
 {
-    // Will implement scrolling logic in next phase
-    if (!stop_scrolling)
+    if (scrolling_enabled && scroll_direction != 0)
     {
-        queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(100));
+        // Update virtual position based on direction
+        virtual_position += scroll_direction * scroll_speed;
+
+        // Handle wraparound
+        if (virtual_position < 0)
+        {
+            virtual_position = total_lines - ((-virtual_position) % total_lines);
+        }
+        virtual_position %= total_lines;
+
+        // Update the display with the new position
+        update_display_from_position();
+
+        // Re-queue the work
+        queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(scroll_interval));
     }
+}
+
+// Sysfs show/store implementations
+static ssize_t scroll_direction_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    return sprintf(buf, "%d\n", scroll_direction);
+}
+
+static ssize_t scroll_direction_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    int new_direction;
+
+    if (sscanf(buf, "%d", &new_direction) != 1)
+        return -EINVAL;
+
+    // Validate direction: -1 (up), 0 (stop), 1 (down)
+    if (new_direction < -1 || new_direction > 1)
+        return -EINVAL;
+
+    scroll_direction = new_direction;
+
+    // Start scrolling work if enabled and direction is not zero
+    if (scrolling_enabled && scroll_direction != 0)
+    {
+        queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(scroll_interval));
+    }
+
+    return count;
+}
+
+static ssize_t scroll_speed_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    return sprintf(buf, "%d\n", scroll_speed);
+}
+
+static ssize_t scroll_speed_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    int new_speed;
+
+    if (sscanf(buf, "%d", &new_speed) != 1)
+        return -EINVAL;
+
+    // Validate speed (at least 1)
+    if (new_speed < 1)
+        return -EINVAL;
+
+    scroll_speed = new_speed;
+    return count;
+}
+
+static ssize_t scroll_interval_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    return sprintf(buf, "%d\n", scroll_interval);
+}
+
+static ssize_t scroll_interval_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    int new_interval;
+
+    if (sscanf(buf, "%d", &new_interval) != 1)
+        return -EINVAL;
+
+    // Validate interval (at least 100ms)
+    if (new_interval < 100)
+        return -EINVAL;
+
+    scroll_interval = new_interval;
+    return count;
+}
+
+static ssize_t scroll_enable_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    return sprintf(buf, "%d\n", scrolling_enabled ? 1 : 0);
+}
+
+static ssize_t scroll_enable_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    int enable;
+
+    if (sscanf(buf, "%d", &enable) != 1)
+        return -EINVAL;
+
+    scrolling_enabled = (enable != 0);
+
+    if (scrolling_enabled && scroll_direction != 0)
+    {
+        // Start scrolling
+        queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(scroll_interval));
+    }
+    else
+    {
+        // Stop scrolling
+        cancel_delayed_work_sync(&scroll_work);
+    }
+
+    return count;
+}
+
+static ssize_t display_text_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    int i, len = 0;
+
+    for (i = 0; i < total_lines; i++)
+    {
+        len += sprintf(buf + len, "%s\n", text_buffer[i]);
+    }
+
+    return len;
+}
+
+static ssize_t display_text_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    char *temp_buf, *line, *pos;
+    int line_num = 0;
+
+    // Make a copy of the buffer since strsep modifies it
+    temp_buf = kmalloc(count + 1, GFP_KERNEL);
+    if (!temp_buf)
+        return -ENOMEM;
+
+    memcpy(temp_buf, buf, count);
+    temp_buf[count] = '\0';
+
+    // Clear the text buffer
+    clear_text_buffer();
+
+    // Parse lines separated by newline
+    pos = temp_buf;
+    while ((line = strsep(&pos, "\n")) != NULL && line_num < MAX_LINES * 2)
+    {
+        // Skip empty lines
+        if (strlen(line) > 0)
+        {
+            set_line(line_num, line);
+            line_num++;
+        }
+    }
+
+    total_lines = line_num > 0 ? line_num : 1; // Ensure at least one line
+    virtual_position = 0;                      // Reset position to top
+
+    // Update display
+    update_display_from_position();
+
+    kfree(temp_buf);
+    return count;
 }
 
 static int __init vertical_scroll_init(void)
@@ -191,6 +415,8 @@ static int __init vertical_scroll_init(void)
     set_line(6, "LINE 7");
     set_line(7, "LINE 8");
 
+    total_lines = 8; // Initialize total lines
+
     // Display all lines on the OLED
     display_text_buffer();
 
@@ -207,7 +433,25 @@ static int __init vertical_scroll_init(void)
     // Initialize the delayed work
     INIT_DELAYED_WORK(&scroll_work, scroll_work_handler);
 
-    printk(KERN_INFO "VerticalScroll: OLED I2C initialized\n");
+    // Create sysfs entries
+    scroll_kobj = kobject_create_and_add("oled_scroll", kernel_kobj);
+    if (!scroll_kobj)
+    {
+        printk(KERN_ERR "VerticalScroll: Failed to create kobject\n");
+        destroy_workqueue(scroll_wq);
+        return -ENOMEM;
+    }
+
+    // Create the files associated with this kobject
+    if (sysfs_create_group(scroll_kobj, &attr_group))
+    {
+        printk(KERN_ERR "VerticalScroll: Failed to create sysfs group\n");
+        kobject_put(scroll_kobj);
+        destroy_workqueue(scroll_wq);
+        return -ENOMEM;
+    }
+
+    printk(KERN_INFO "VerticalScroll: OLED I2C initialized with sysfs interface\n");
     return 0;
 }
 
@@ -215,6 +459,7 @@ static void __exit vertical_scroll_exit(void)
 {
     // Set flag to stop scrolling
     stop_scrolling = true;
+    scrolling_enabled = false;
 
     // Cleanup workqueue
     if (scroll_wq)
@@ -222,6 +467,9 @@ static void __exit vertical_scroll_exit(void)
         cancel_delayed_work_sync(&scroll_work);
         destroy_workqueue(scroll_wq);
     }
+
+    // Remove sysfs entries
+    kobject_put(scroll_kobj);
 
     // Clear the display when unloading
     oled_clear();
