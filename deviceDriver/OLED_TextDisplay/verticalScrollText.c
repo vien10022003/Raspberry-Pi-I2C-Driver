@@ -54,6 +54,7 @@ static void display_char(char c, int x, int y)
 {
     int i, j;
     int font_index;
+    unsigned char rotated_data[8] = {0}; // For storing rotated character data
 
     // Get the font index for the character
     if (c >= 'A' && c <= 'Z')
@@ -65,17 +66,32 @@ static void display_char(char c, int x, int y)
     else
         return; // Unsupported character
 
-    // Set the page address (y / 8)
-    SSD1306_Write(true, 0xB0 + (y / 8));
-
-    // Set column address
-    SSD1306_Write(true, 0x00 | (x & 0x0F));        // Lower column address
-    SSD1306_Write(true, 0x10 | ((x >> 4) & 0x0F)); // Higher column address
-
-    // Write the character data
-    for (j = 0; j < 8; j++) // 8 columns per character
+    // Rotate the bitmap 90 degrees clockwise
+    for (i = 0; i < 8; i++)
     {
-        SSD1306_Write(false, font_8x8[font_index][j]);
+        for (j = 0; j < 8; j++)
+        {
+            // Check if bit is set in original bitmap
+            if (font_8x8[font_index][j] & (1 << i))
+            {
+                // Set corresponding bit in rotated bitmap
+                rotated_data[i] |= (1 << (7 - j));
+            }
+        }
+    }
+
+    // Display the rotated character
+    for (i = 0; i < 8; i++)
+    {
+        // Set the page address (each page is 8 pixels tall)
+        SSD1306_Write(true, 0xB0 + ((y + i) / 8));
+
+        // Set column address
+        SSD1306_Write(true, 0x00 | (x & 0x0F));
+        SSD1306_Write(true, 0x10 | ((x >> 4) & 0x0F));
+
+        // Write one byte of the rotated character
+        SSD1306_Write(false, rotated_data[i]);
     }
 }
 
