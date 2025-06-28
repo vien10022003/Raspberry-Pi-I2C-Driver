@@ -29,6 +29,11 @@ static bool stop_scrolling = false;
 #define OLED_HEIGHT 64
 #define CHAR_WIDTH 8
 #define CHAR_HEIGHT 8
+#define MAX_CHARS_PER_LINE 16 // 128/8 = 16 characters per line
+#define MAX_LINES 8           // 64/8 = 8 lines on the display
+
+// Text buffer to store multiple lines
+static char text_buffer[MAX_LINES][MAX_CHARS_PER_LINE + 1]; // +1 for null terminator
 
 // Function to clear the OLED display
 static void oled_clear(void)
@@ -123,6 +128,41 @@ static void display_string(const char *str, int x, int y)
     }
 }
 
+// Function to clear the text buffer
+static void clear_text_buffer(void)
+{
+    int i;
+    for (i = 0; i < MAX_LINES; i++)
+    {
+        memset(text_buffer[i], 0, MAX_CHARS_PER_LINE + 1);
+    }
+}
+
+// Function to set a line in the text buffer
+static void set_line(int line_num, const char *text)
+{
+    if (line_num < 0 || line_num >= MAX_LINES)
+        return;
+
+    strncpy(text_buffer[line_num], text, MAX_CHARS_PER_LINE);
+    text_buffer[line_num][MAX_CHARS_PER_LINE] = '\0'; // Ensure null termination
+}
+
+// Function to display the entire text buffer on the OLED
+static void display_text_buffer(void)
+{
+    int i;
+
+    // Clear the display first
+    oled_clear();
+
+    // Display each line at the appropriate Y position
+    for (i = 0; i < MAX_LINES; i++)
+    {
+        display_string(text_buffer[i], 0, i * CHAR_HEIGHT);
+    }
+}
+
 // Work queue handler function (stub for now)
 static void scroll_work_handler(struct work_struct *work)
 {
@@ -138,13 +178,23 @@ static int __init vertical_scroll_init(void)
     printk(KERN_INFO "VerticalScroll: Module loaded successfully\n");
     printk(KERN_INFO "VerticalScroll: Text to display: %s\n", scroll_text);
 
-    // Clear the OLED display
-    oled_clear();
+    // Clear the text buffer
+    clear_text_buffer();
 
-    // Display "HELLO" on the screen
-    display_string("HELLO", 40, 28); // Center it roughly
+    // Populate the buffer with 8 lines of text
+    set_line(0, "LINE 1");
+    set_line(1, "LINE 2");
+    set_line(2, "LINE 3");
+    set_line(3, "LINE 4");
+    set_line(4, "LINE 5");
+    set_line(5, "LINE 6");
+    set_line(6, "LINE 7");
+    set_line(7, "LINE 8");
 
-    printk(KERN_INFO "VerticalScroll: Text displayed\n");
+    // Display all lines on the OLED
+    display_text_buffer();
+
+    printk(KERN_INFO "VerticalScroll: Text buffer displayed\n");
 
     // Initialize workqueue for future animation
     scroll_wq = create_singlethread_workqueue("scroll_workqueue");
