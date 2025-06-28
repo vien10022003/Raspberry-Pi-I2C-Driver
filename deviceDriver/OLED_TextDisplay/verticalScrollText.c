@@ -6,6 +6,7 @@
 #include <linux/moduleparam.h>
 #include <linux/sysfs.h>
 #include <linux/device.h>
+#include <linux/slab.h> // Add this for kmalloc/kfree
 #include "font_chars.h"
 
 MODULE_LICENSE("GPL");
