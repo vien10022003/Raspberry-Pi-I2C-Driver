@@ -5,7 +5,11 @@
 echo "=== HYBRID SCROLL MODULE LOADER ==="
 echo "Building and loading hybrid scroll module..."
 
-# Build and load I2C driver first
+# Lấy đường dẫn hiện tại
+CURRENT_DIR=$(pwd)
+I2C_SYMVERS_PATH="$CURRENT_DIR/deviceDriver/I2CClientDriver/Module.symvers"
+
+# Build I2C driver trước
 echo "1. Building I2C Client Driver..."
 cd deviceDriver/I2CClientDriver
 make clean && make
@@ -21,28 +25,37 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Wait a moment for the module to initialize
-sleep 1
+# Kiểm tra xem Module.symvers có được tạo không
+echo "Checking for Module.symvers..."
+if [ -f "Module.symvers" ]; then
+    echo "✓ Module.symvers found at $(pwd)/Module.symvers"
+    echo "Symbol contents:"
+    cat Module.symvers
+else
+    echo "✗ Module.symvers not found in I2CClientDriver directory"
+    echo "Generated files:"
+    ls -la *.symvers *.ko 2>/dev/null || echo "No .symvers or .ko files found"
+    exit 1
+fi
 
-# Build hybrid scroll module (after I2C driver is loaded and Module.symvers is created)
+# Chờ một chút để module khởi tạo
+sleep 2
+
+# Build hybrid scroll module
 cd ../hybridScroll
 echo "3. Building Hybrid Scroll Module..."
 make clean && make
 if [ $? -ne 0 ]; then
     echo "Failed to build HybridScroll"
-    echo "Checking if I2CDriver symbols are available..."
-    if [ ! -f "../I2CClientDriver/Module.symvers" ]; then
-        echo "Module.symvers not found in I2CClientDriver directory"
-        echo "Trying to rebuild I2CClientDriver..."
-        cd ../I2CClientDriver
-        make
-        cd ../hybridScroll
-        make
+    echo "Debugging info:"
+    echo "Current directory: $(pwd)"
+    echo "I2C Module.symvers path: $I2C_SYMVERS_PATH"
+    echo "I2C Module.symvers exists: $([ -f "$I2C_SYMVERS_PATH" ] && echo "YES" || echo "NO")"
+    if [ -f "$I2C_SYMVERS_PATH" ]; then
+        echo "Symbol file contents:"
+        cat "$I2C_SYMVERS_PATH"
     fi
-    if [ $? -ne 0 ]; then
-        echo "Still failed to build. Exiting."
-        exit 1
-    fi
+    exit 1
 fi
 
 echo "4. Loading Hybrid Scroll Module..."
@@ -50,6 +63,7 @@ sudo insmod hybridScroll.ko
 if [ $? -ne 0 ]; then
     echo "Failed to load HybridScroll"
     echo "Module may have dependency issues. Check dmesg for details."
+    sudo dmesg | tail -10
     exit 1
 fi
 
