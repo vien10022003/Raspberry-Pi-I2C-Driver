@@ -45,6 +45,7 @@ static int scroll_interval = 500; // ms between scroll updates
 static int virtual_position = 0;  // Virtual position in the text buffer
 static int total_lines = 0;       // Total number of lines in the buffer
 static bool scrolling_enabled = false;
+static int horizontal_offset = 0; // Horizontal offset for selected line
 
 // For sysfs
 static struct kobject *scroll_kobj;
@@ -62,6 +63,8 @@ static ssize_t display_text_show(struct kobject *kobj, struct kobj_attribute *at
 static ssize_t display_text_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
 static ssize_t manual_scroll_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
 static ssize_t manual_scroll_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
+static ssize_t horizontal_shift_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+static ssize_t horizontal_shift_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
 
 // Define sysfs attributes
 static struct kobj_attribute scroll_direction_attribute =
@@ -76,6 +79,8 @@ static struct kobj_attribute display_text_attribute =
     __ATTR(text, 0664, display_text_show, display_text_store);
 static struct kobj_attribute manual_scroll_attribute =
     __ATTR(scroll, 0664, manual_scroll_show, manual_scroll_store);
+static struct kobj_attribute horizontal_shift_attribute =
+    __ATTR(horizontal_shift, 0664, horizontal_shift_show, horizontal_shift_store);
 
 // Attribute group
 static struct attribute *attrs[] = {
@@ -84,7 +89,8 @@ static struct attribute *attrs[] = {
     &scroll_interval_attribute.attr,
     &scroll_enable_attribute.attr,
     &display_text_attribute.attr,
-    &manual_scroll_attribute.attr, // Add the new attribute
+    &manual_scroll_attribute.attr,
+    &horizontal_shift_attribute.attr, // Add the new attribute
     NULL,
 };
 
@@ -189,6 +195,25 @@ static void display_string_with_inversion(const char *str, int x, int y, bool in
     }
 }
 
+// Function to display a string with horizontal offset
+static void display_string_with_offset(const char *str, int x, int y, bool inverted, int offset)
+{
+    int i;
+    int curr_x = x;
+    int str_len = strlen(str);
+
+    // Skip characters based on offset
+    for (i = offset; i < str_len && str[i] != '\0'; i++)
+    {
+        // Check if we've reached the end of the display width
+        if (curr_x + CHAR_WIDTH > OLED_WIDTH)
+            break;
+
+        display_char_with_inversion(str[i], curr_x, y, inverted);
+        curr_x += CHAR_WIDTH; // Move to the next character position
+    }
+}
+
 // Original display_char function now calls the new function with inverted=false
 static void display_char(char c, int x, int y)
 {
@@ -247,11 +272,12 @@ static void update_display_from_position(void)
     {
         int buffer_line = (virtual_position + i) % total_lines;
 
-        // First line (selected line) is displayed inverted
+        // First line (selected line) is displayed inverted with horizontal offset
         if (i == 0)
         {
-            display_string_with_inversion(text_buffer[buffer_line], 0, i * CHAR_HEIGHT, true);
-            printk(KERN_INFO "VerticalScroll: Selected line %d: %s\n", buffer_line, text_buffer[buffer_line]);
+            display_string_with_offset(text_buffer[buffer_line], 0, i * CHAR_HEIGHT, true, horizontal_offset);
+            printk(KERN_INFO "VerticalScroll: Selected line %d: %s (offset: %d)\n",
+                   buffer_line, text_buffer[buffer_line], horizontal_offset);
         }
         else
         {
@@ -458,22 +484,71 @@ static void scroll_down(void)
     printk(KERN_INFO "VerticalScroll: Manually scrolled down to position %d\n", virtual_position);
 }
 
+// Horizontal shift sysfs handlers
+static ssize_t horizontal_shift_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    int selected_line = virtual_position % total_lines;
+    int max_offset = strlen(text_buffer[selected_line]) - MAX_CHARS_PER_LINE;
+    if (max_offset < 0)
+        max_offset = 0;
+
+    return sprintf(buf, "Horizontal offset: %d (max: %d)\nLine: %s\nWrite '1' to shift left\n",
+                   horizontal_offset, max_offset, text_buffer[selected_line]);
+}
+
+static ssize_t horizontal_shift_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    int shift_value;
+    int selected_line = virtual_position % total_lines;
+    int str_len = strlen(text_buffer[selected_line]);
+    int max_offset = str_len - MAX_CHARS_PER_LINE;
+
+    if (max_offset < 0)
+        max_offset = 0;
+
+    if (sscanf(buf, "%d", &shift_value) != 1)
+        return -EINVAL;
+
+    if (shift_value == 1)
+    {
+        // Shift left (increase offset)
+        horizontal_offset++;
+
+        // Wrap around if we exceed the maximum offset
+        if (horizontal_offset > max_offset)
+            horizontal_offset = 0;
+
+        // Update the display
+        update_display_from_position();
+
+        printk(KERN_INFO "VerticalScroll: Horizontal shift - offset now: %d\n", horizontal_offset);
+    }
+    else
+    {
+        return -EINVAL; // Only accept value 1
+    }
+
+    return count;
+}
+
 // Manual scroll sysfs handlers
 static ssize_t manual_scroll_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
     int selected_line = virtual_position % total_lines;
-    return sprintf(buf, "Selected line: %d - %s\nWrite 'up' or 'down' to scroll one line\n",
-                   selected_line, text_buffer[selected_line]);
+    return sprintf(buf, "Selected line: %d - %s\nHorizontal offset: %d\nWrite 'up' or 'down' to scroll one line\n",
+                   selected_line, text_buffer[selected_line], horizontal_offset);
 }
 
 static ssize_t manual_scroll_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
 {
     if (strncmp(buf, "up", 2) == 0)
     {
+        horizontal_offset = 0; // Reset horizontal offset when changing lines
         scroll_up();
     }
     else if (strncmp(buf, "down", 4) == 0)
     {
+        horizontal_offset = 0; // Reset horizontal offset when changing lines
         scroll_down();
     }
     else
