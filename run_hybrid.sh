@@ -5,10 +5,6 @@
 echo "=== HYBRID SCROLL MODULE LOADER ==="
 echo "Building and loading hybrid scroll module..."
 
-# Lấy đường dẫn hiện tại
-CURRENT_DIR=$(pwd)
-I2C_SYMVERS_PATH="$CURRENT_DIR/deviceDriver/I2CClientDriver/Module.symvers"
-
 # Build I2C driver trước
 echo "1. Building I2C Client Driver..."
 cd deviceDriver/I2CClientDriver
@@ -49,12 +45,8 @@ if [ $? -ne 0 ]; then
     echo "Failed to build HybridScroll"
     echo "Debugging info:"
     echo "Current directory: $(pwd)"
-    echo "I2C Module.symvers path: $I2C_SYMVERS_PATH"
-    echo "I2C Module.symvers exists: $([ -f "$I2C_SYMVERS_PATH" ] && echo "YES" || echo "NO")"
-    if [ -f "$I2C_SYMVERS_PATH" ]; then
-        echo "Symbol file contents:"
-        cat "$I2C_SYMVERS_PATH"
-    fi
+    echo "Makefile contents:"
+    cat Makefile
     exit 1
 fi
 
