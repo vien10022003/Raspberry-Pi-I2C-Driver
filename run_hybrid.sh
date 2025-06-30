@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# Script to run hybrid scroll module
+
+echo "=== HYBRID SCROLL MODULE LOADER ==="
+echo "Building and loading hybrid scroll module..."
+
+# Build and load I2C driver first
+echo "1. Building I2C Client Driver..."
+cd deviceDriver/I2CClientDriver
+make clean && make
+if [ $? -ne 0 ]; then
+    echo "Failed to build I2CClientDriver"
+    exit 1
+fi
+
+echo "2. Loading I2C Client Driver..."
+sudo insmod I2CDriver.ko
+if [ $? -ne 0 ]; then
+    echo "Failed to load I2CClientDriver"
+    exit 1
+fi
+
+# Build and load hybrid scroll module
+cd ../hybridScroll
+echo "3. Building Hybrid Scroll Module..."
+make clean && make
+if [ $? -ne 0 ]; then
+    echo "Failed to build HybridScroll"
+    exit 1
+fi
+
+echo "4. Loading Hybrid Scroll Module..."
+sudo insmod hybridScroll.ko
+if [ $? -ne 0 ]; then
+    echo "Failed to load HybridScroll"
+    exit 1
+fi
+
+echo "=== SUCCESS! ==="
+echo "Hybrid Scroll Module is now running!"
+echo ""
+echo "Controls:"
+echo "  - Arrow keys: Manual scroll (UP/DOWN = vertical, LEFT/RIGHT = horizontal)"
+echo "  - SPACE: Toggle horizontal auto scroll"
+echo "  - Z: Toggle vertical auto scroll"  
+echo "  - ESC: Reset all scroll positions"
+echo "  - Q: Demo mode (auto scroll both directions)"
+echo "  - P: Pause all auto scroll"
+echo ""
+echo "To view kernel messages: sudo dmesg | tail"
+echo "To stop: sudo ./rmmod_hybrid.sh"
+
+cd ../.. 
