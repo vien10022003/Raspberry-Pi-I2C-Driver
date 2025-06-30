@@ -287,6 +287,37 @@ static void update_display_from_position(void)
     }
 }
 
+// Function to clear only the first line (selected line)
+static void clear_first_line(void)
+{
+    int j;
+
+    // Clear only the first page (first line)
+    SSD1306_Write(true, 0xB0); // Set page address to 0
+    SSD1306_Write(true, 0x00); // Set lower column address
+    SSD1306_Write(true, 0x10); // Set higher column address
+
+    for (j = 0; j < 128; j++) // 128 columns
+    {
+        SSD1306_Write(false, 0x00); // Clear each pixel
+    }
+}
+
+// Function to update only the selected line with horizontal offset
+static void update_selected_line_only(void)
+{
+    int selected_line = virtual_position % total_lines;
+
+    // Clear only the first line
+    clear_first_line();
+
+    // Redraw only the selected line with offset and inversion
+    display_string_with_offset(text_buffer[selected_line], 0, 0, true, horizontal_offset);
+
+    printk(KERN_INFO "VerticalScroll: Updated selected line %d with offset %d\n",
+           selected_line, horizontal_offset);
+}
+
 // Work queue handler function for scrolling
 static void scroll_work_handler(struct work_struct *work)
 {
@@ -519,8 +550,8 @@ static ssize_t horizontal_shift_store(struct kobject *kobj, struct kobj_attribut
         if (horizontal_offset > max_offset)
             horizontal_offset = 0;
 
-        // Update the display
-        update_display_from_position();
+        // Update only the selected line (much faster)
+        update_selected_line_only();
 
         printk(KERN_INFO "VerticalScroll: Horizontal shift - offset now: %d\n", horizontal_offset);
     }
