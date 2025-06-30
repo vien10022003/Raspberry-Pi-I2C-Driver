@@ -25,6 +25,7 @@ MODULE_PARM_DESC(scroll_text, "Text to scroll vertically");
 // Workqueue for animation
 static struct workqueue_struct *scroll_wq;
 static struct delayed_work scroll_work;
+static struct delayed_work horizontal_scroll_work; // Add horizontal scroll work
 static bool stop_scrolling = false;
 
 // OLED display parameters
@@ -46,7 +47,8 @@ static int scroll_interval = 500; // ms between scroll updates
 static int virtual_position = 0;  // Virtual position in the text buffer
 static int total_lines = 0;       // Total number of lines in the buffer
 static bool scrolling_enabled = false;
-static int horizontal_offset = 0; // Horizontal offset for selected line
+static int horizontal_offset = 0;            // Horizontal offset for selected line
+static bool horizontal_auto_enabled = false; // Auto horizontal scrolling
 
 // For sysfs
 static struct kobject *scroll_kobj;
@@ -66,6 +68,8 @@ static ssize_t manual_scroll_show(struct kobject *kobj, struct kobj_attribute *a
 static ssize_t manual_scroll_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
 static ssize_t horizontal_shift_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
 static ssize_t horizontal_shift_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
+static ssize_t horizontal_auto_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+static ssize_t horizontal_auto_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
 
 // Define sysfs attributes
 static struct kobj_attribute scroll_direction_attribute =
@@ -82,6 +86,8 @@ static struct kobj_attribute manual_scroll_attribute =
     __ATTR(scroll, 0664, manual_scroll_show, manual_scroll_store);
 static struct kobj_attribute horizontal_shift_attribute =
     __ATTR(horizontal_shift, 0664, horizontal_shift_show, horizontal_shift_store);
+static struct kobj_attribute horizontal_auto_attribute =
+    __ATTR(horizontal_auto, 0664, horizontal_auto_show, horizontal_auto_store);
 
 // Attribute group
 static struct attribute *attrs[] = {
@@ -91,7 +97,8 @@ static struct attribute *attrs[] = {
     &scroll_enable_attribute.attr,
     &display_text_attribute.attr,
     &manual_scroll_attribute.attr,
-    &horizontal_shift_attribute.attr, // Add the new attribute
+    &horizontal_shift_attribute.attr,
+    &horizontal_auto_attribute.attr, // Add new attribute
     NULL,
 };
 
@@ -341,6 +348,33 @@ static void scroll_work_handler(struct work_struct *work)
     }
 }
 
+// Work queue handler for automatic horizontal scrolling
+static void horizontal_scroll_work_handler(struct work_struct *work)
+{
+    if (horizontal_auto_enabled)
+    {
+        int selected_line = virtual_position % total_lines;
+        int str_len = strlen(text_buffer[selected_line]);
+        int max_offset = str_len - MAX_CHARS_PER_LINE;
+
+        if (max_offset < 0)
+            max_offset = 0;
+
+        // Auto increment horizontal offset
+        horizontal_offset++;
+
+        // Wrap around if we exceed the maximum offset
+        if (horizontal_offset > max_offset)
+            horizontal_offset = 0;
+
+        // Update only the selected line
+        update_selected_line_only();
+
+        // Re-queue the horizontal scroll work with 500ms interval
+        queue_delayed_work(scroll_wq, &horizontal_scroll_work, msecs_to_jiffies(500));
+    }
+}
+
 // Sysfs show/store implementations
 static ssize_t scroll_direction_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
@@ -563,12 +597,44 @@ static ssize_t horizontal_shift_store(struct kobject *kobj, struct kobj_attribut
     return count;
 }
 
+// Horizontal auto scroll sysfs handlers
+static ssize_t horizontal_auto_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    return sprintf(buf, "%d\n", horizontal_auto_enabled ? 1 : 0);
+}
+
+static ssize_t horizontal_auto_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    int enable;
+
+    if (sscanf(buf, "%d", &enable) != 1)
+        return -EINVAL;
+
+    horizontal_auto_enabled = (enable != 0);
+
+    if (horizontal_auto_enabled)
+    {
+        // Start automatic horizontal scrolling with 500ms interval
+        queue_delayed_work(scroll_wq, &horizontal_scroll_work, msecs_to_jiffies(500));
+        printk(KERN_INFO "VerticalScroll: Automatic horizontal scrolling enabled (500ms interval)\n");
+    }
+    else
+    {
+        // Stop automatic horizontal scrolling
+        cancel_delayed_work_sync(&horizontal_scroll_work);
+        printk(KERN_INFO "VerticalScroll: Automatic horizontal scrolling disabled\n");
+    }
+
+    return count;
+}
+
 // Manual scroll sysfs handlers
 static ssize_t manual_scroll_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
     int selected_line = virtual_position % total_lines;
-    return sprintf(buf, "Selected line: %d - %s\nHorizontal offset: %d\nWrite 'up' or 'down' to scroll one line\n",
-                   selected_line, text_buffer[selected_line], horizontal_offset);
+    return sprintf(buf, "Selected line: %d - %s\nHorizontal offset: %d\nAuto horizontal: %s\nWrite 'up' or 'down' to scroll one line\n",
+                   selected_line, text_buffer[selected_line], horizontal_offset,
+                   horizontal_auto_enabled ? "ON" : "OFF");
 }
 
 static ssize_t manual_scroll_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
@@ -576,12 +642,26 @@ static ssize_t manual_scroll_store(struct kobject *kobj, struct kobj_attribute *
     if (strncmp(buf, "up", 2) == 0)
     {
         horizontal_offset = 0; // Reset horizontal offset when changing lines
+        // Stop auto horizontal scrolling temporarily when manually scrolling
+        cancel_delayed_work_sync(&horizontal_scroll_work);
         scroll_up();
+        // Restart auto horizontal if it was enabled
+        if (horizontal_auto_enabled)
+        {
+            queue_delayed_work(scroll_wq, &horizontal_scroll_work, msecs_to_jiffies(500));
+        }
     }
     else if (strncmp(buf, "down", 4) == 0)
     {
         horizontal_offset = 0; // Reset horizontal offset when changing lines
+        // Stop auto horizontal scrolling temporarily when manually scrolling
+        cancel_delayed_work_sync(&horizontal_scroll_work);
         scroll_down();
+        // Restart auto horizontal if it was enabled
+        if (horizontal_auto_enabled)
+        {
+            queue_delayed_work(scroll_wq, &horizontal_scroll_work, msecs_to_jiffies(500));
+        }
     }
     else
     {
@@ -626,6 +706,7 @@ static int __init vertical_scroll_init(void)
 
     // Initialize the delayed work
     INIT_DELAYED_WORK(&scroll_work, scroll_work_handler);
+    INIT_DELAYED_WORK(&horizontal_scroll_work, horizontal_scroll_work_handler);
 
     // Create sysfs entries
     scroll_kobj = kobject_create_and_add("oled_scroll", kernel_kobj);
@@ -654,11 +735,13 @@ static void __exit vertical_scroll_exit(void)
     // Set flag to stop scrolling
     stop_scrolling = true;
     scrolling_enabled = false;
+    horizontal_auto_enabled = false;
 
     // Cleanup workqueue
     if (scroll_wq)
     {
         cancel_delayed_work_sync(&scroll_work);
+        cancel_delayed_work_sync(&horizontal_scroll_work);
         destroy_workqueue(scroll_wq);
     }
 
