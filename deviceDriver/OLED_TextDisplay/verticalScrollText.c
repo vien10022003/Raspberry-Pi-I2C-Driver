@@ -34,9 +34,10 @@ static bool stop_scrolling = false;
 #define CHAR_HEIGHT 8
 #define MAX_CHARS_PER_LINE 16 // 128/8 = 16 characters per line
 #define MAX_LINES 8           // 64/8 = 8 lines on the display
+#define MAX_TEXT_LENGTH 64    // Maximum text length per line for storage
 
 // Text buffer to store multiple lines
-static char text_buffer[MAX_LINES][MAX_CHARS_PER_LINE + 1]; // +1 for null terminator
+static char text_buffer[MAX_LINES][MAX_TEXT_LENGTH + 1]; // +1 for null terminator
 
 // Scrolling control variables
 static int scroll_direction = 0;  // 0: stopped, 1: down, -1: up
@@ -232,7 +233,7 @@ static void clear_text_buffer(void)
     int i;
     for (i = 0; i < MAX_LINES; i++)
     {
-        memset(text_buffer[i], 0, MAX_CHARS_PER_LINE + 1);
+        memset(text_buffer[i], 0, MAX_TEXT_LENGTH + 1);
     }
 }
 
@@ -242,8 +243,8 @@ static void set_line(int line_num, const char *text)
     if (line_num < 0 || line_num >= MAX_LINES)
         return;
 
-    strncpy(text_buffer[line_num], text, MAX_CHARS_PER_LINE);
-    text_buffer[line_num][MAX_CHARS_PER_LINE] = '\0'; // Ensure null termination
+    strncpy(text_buffer[line_num], text, MAX_TEXT_LENGTH);
+    text_buffer[line_num][MAX_TEXT_LENGTH] = '\0'; // Ensure null termination
 }
 
 // Function to display the entire text buffer on the OLED
@@ -567,20 +568,20 @@ static int __init vertical_scroll_init(void)
     // Clear the text buffer
     clear_text_buffer();
 
-    // Populate the buffer with 8 lines of text
-    set_line(0, "LAP TRINH DRIVE");
-    set_line(1, "C601");
-    set_line(2, "NHOM 3");
-    set_line(3, "CAC THANH VIEN TRONG NHOM");
-    set_line(4, "BUI DUC KHANH CT060119");
-    set_line(5, "NGUYEN THI HONG NGAN CT060229");
-    set_line(6, "TO QUANG VIEN CT060146");
-    set_line(7, "THAN NHAN CHINH CT060205");
+    // Populate the buffer with 8 lines of text (now with full text)
+    set_line(0, "LAP TRINH DRIVER KERNEL");
+    set_line(1, "C601 - HOC VIEN KY THUAT MAT MA");
+    set_line(2, "NHOM 3 - BAI CUOI KY");
+    set_line(3, "CAC THANH VIEN TRONG NHOM GOM:");
+    set_line(4, "BUI DUC KHANH - CT060119");
+    set_line(5, "NGUYEN THI HONG NGAN - CT060229");
+    set_line(6, "TO QUANG VIEN - CT060146");
+    set_line(7, "THAN NHAN CHINH - CT060205");
 
     total_lines = 8; // Initialize total lines
 
-    // Display all lines on the OLED
-    display_text_buffer();
+    // Display all lines on the OLED (use update function to show highlighting)
+    update_display_from_position();
 
     printk(KERN_INFO "VerticalScroll: Text buffer displayed\n");
 
