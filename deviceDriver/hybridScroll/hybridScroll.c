@@ -42,6 +42,11 @@ static struct delayed_work scroll_work;
 
 /* Pre-computed transposed fonts for horizontal display */
 static uint8_t transposed_font[40][8];
+/* Pre-computed rotated fonts for vertical display */
+static uint8_t rotated_font[40][8];
+
+/* Longest line length for horizontal scroll reset */
+static int max_line_length = 0;
 
 /* Function to initialize default text */
 static void init_default_text(void)
@@ -56,37 +61,48 @@ static void init_default_text(void)
     strcpy(text_buffer[7], "DEMO MODULE");
 
     total_lines = 8;
+
+    /* Calculate max_line_length once */
+    for (int i = 0; i < total_lines; i++)
+    {
+        int len = strlen(text_buffer[i]);
+        if (len > max_line_length)
+            max_line_length = len;
+    }
 }
 
-/* Pre-compute transposed fonts for optimized horizontal scroll */
+/* Pre-compute transposed fonts for optimized horizontal scroll and rotated fonts for vertical scroll */
 static void precompute_transposed_fonts(void)
 {
     int char_idx, i, j;
 
-    printk(KERN_INFO "HybridScroll: Pre-computing transposed fonts...\n");
+    printk(KERN_INFO "HybridScroll: Pre-computing transposed and rotated fonts...\n");
 
     for (char_idx = 0; char_idx < 40; char_idx++)
     {
+        /* Transposed font for horizontal display */
         for (i = 0; i < 8; i++)
         {
             transposed_font[char_idx][i] = 0;
+            rotated_font[char_idx][i] = 0;
             for (j = 0; j < 8; j++)
             {
                 if (font_8x8[char_idx][j] & (1 << (7 - i)))
                 {
                     transposed_font[char_idx][i] |= (1 << j);
+                    rotated_font[char_idx][i] |= (1 << j);
                 }
             }
         }
     }
 
-    printk(KERN_INFO "HybridScroll: Font transpose completed!\n");
+    printk(KERN_INFO "HybridScroll: Font pre-computation completed!\n");
 }
 
-/* Clear entire OLED screen */
+/* Clear entire OLED screen - optimized attempt */
 static void oled_clear_screen(void)
 {
-    int page, col;
+    int page;
 
     for (page = 0; page < 8; page++)
     {
@@ -94,7 +110,8 @@ static void oled_clear_screen(void)
         SSD1306_Write(true, 0x00);        // Set lower column address
         SSD1306_Write(true, 0x10);        // Set higher column address
 
-        for (col = 0; col < 128; col++)
+        /* Ideally, we would send multiple bytes at once, but current SSD1306_Write API supports single byte */
+        for (int col = 0; col < 128; col++)
         {
             SSD1306_Write(false, 0x00);
         }
@@ -127,37 +144,24 @@ static void draw_char_horizontal(int x, int page, char c)
     }
 }
 
-/* Draw character vertically (rotated 90 degrees) */
+/* Draw character vertically (rotated 90 degrees) using pre-computed data */
 static void draw_char_vertical(int x, int y, char c)
 {
-    int font_index, i, j;
+    int font_index, i;
     int page = y / 8;
-    unsigned char rotated_data[8] = {0};
 
     if (x >= 128 || x < 0 || page >= 8 || page < 0)
         return;
 
     font_index = char_to_index(c);
 
-    /* Transform font data for vertical display */
-    for (i = 0; i < 8; i++)
-    {
-        for (j = 0; j < 8; j++)
-        {
-            if (font_8x8[font_index][j] & (1 << (7 - i)))
-            {
-                rotated_data[i] |= (1 << j);
-            }
-        }
-    }
-
-    /* Write each column */
+    /* Write each column using pre-computed rotated data */
     for (i = 0; i < 8; i++)
     {
         SSD1306_Write(true, 0xB0 + page);
         SSD1306_Write(true, 0x00 | ((x + i) & 0x0F));
         SSD1306_Write(true, 0x10 | (((x + i) >> 4) & 0x0F));
-        SSD1306_Write(false, rotated_data[i]);
+        SSD1306_Write(false, rotated_font[font_index][i]);
     }
 }
 
@@ -170,7 +174,7 @@ static void display_hybrid_scroll(void)
     oled_clear_screen();
 
     /* Display lines with vertical offset */
-    for (display_line = 0; display_line < MAX_LINES && display_line < total_lines; display_line++)
+    for (display_line = 0; display_line < MAX_LINES; display_line++)
     {
         current_line = (vertical_offset + display_line) % total_lines;
 
@@ -184,16 +188,8 @@ static void display_hybrid_scroll(void)
         {
             if (display_x + 8 > 0) /* Only draw if character is visible */
             {
-                if (auto_scroll_h)
-                {
-                    /* Horizontal scroll mode - use horizontal font */
-                    draw_char_horizontal(display_x, display_line, text_buffer[current_line][char_pos]);
-                }
-                else
-                {
-                    /* Vertical mode - use vertical font */
-                    draw_char_vertical(display_x, display_line * CHAR_HEIGHT, text_buffer[current_line][char_pos]);
-                }
+                /* Always use horizontal font for simplicity and performance */
+                draw_char_horizontal(display_x, display_line, text_buffer[current_line][char_pos]);
             }
             display_x += 8;
         }
@@ -203,9 +199,6 @@ static void display_hybrid_scroll(void)
 /* Timer work handler for auto scroll */
 static void scroll_work_handler(struct work_struct *work)
 {
-    int max_length = 0;
-    int i;
-
     if (!module_active)
         return;
 
@@ -214,14 +207,7 @@ static void scroll_work_handler(struct work_struct *work)
         horizontal_offset += 2; /* Horizontal scroll speed */
 
         /* Reset when scrolled past the longest line */
-        for (i = 0; i < total_lines; i++)
-        {
-            int len = strlen(text_buffer[i]);
-            if (len > max_length)
-                max_length = len;
-        }
-
-        if (horizontal_offset >= (max_length * 8 + 128))
+        if (horizontal_offset >= (max_line_length * 8 + 128))
         {
             horizontal_offset = 0;
         }
