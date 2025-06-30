@@ -21,19 +21,35 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Build and load hybrid scroll module
+# Wait a moment for the module to initialize
+sleep 1
+
+# Build hybrid scroll module (after I2C driver is loaded and Module.symvers is created)
 cd ../hybridScroll
 echo "3. Building Hybrid Scroll Module..."
 make clean && make
 if [ $? -ne 0 ]; then
     echo "Failed to build HybridScroll"
-    exit 1
+    echo "Checking if I2CDriver symbols are available..."
+    if [ ! -f "../I2CClientDriver/Module.symvers" ]; then
+        echo "Module.symvers not found in I2CClientDriver directory"
+        echo "Trying to rebuild I2CClientDriver..."
+        cd ../I2CClientDriver
+        make
+        cd ../hybridScroll
+        make
+    fi
+    if [ $? -ne 0 ]; then
+        echo "Still failed to build. Exiting."
+        exit 1
+    fi
 fi
 
 echo "4. Loading Hybrid Scroll Module..."
 sudo insmod hybridScroll.ko
 if [ $? -ne 0 ]; then
     echo "Failed to load HybridScroll"
+    echo "Module may have dependency issues. Check dmesg for details."
     exit 1
 fi
 

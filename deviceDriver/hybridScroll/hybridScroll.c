@@ -101,24 +101,6 @@ static void oled_clear_screen(void)
     }
 }
 
-/* Clear specific page */
-static void oled_clear_page(int page)
-{
-    int col;
-
-    if (page < 0 || page >= 8)
-        return;
-
-    SSD1306_Write(true, 0xB0 + page);
-    SSD1306_Write(true, 0x00);
-    SSD1306_Write(true, 0x10);
-
-    for (col = 0; col < 128; col++)
-    {
-        SSD1306_Write(false, 0x00);
-    }
-}
-
 /* Draw character at position using pre-computed transposed font */
 static void draw_char_horizontal(int x, int page, char c)
 {
@@ -182,7 +164,7 @@ static void draw_char_vertical(int x, int y, char c)
 /* Display hybrid scroll: horizontal scroll + vertical selection */
 static void display_hybrid_scroll(void)
 {
-    int line, char_pos, display_x;
+    int char_pos, display_x;
     int current_line, display_line;
 
     oled_clear_screen();
@@ -221,6 +203,9 @@ static void display_hybrid_scroll(void)
 /* Timer work handler for auto scroll */
 static void scroll_work_handler(struct work_struct *work)
 {
+    int max_length = 0;
+    int i;
+
     if (!module_active)
         return;
 
@@ -229,8 +214,6 @@ static void scroll_work_handler(struct work_struct *work)
         horizontal_offset += 2; /* Horizontal scroll speed */
 
         /* Reset when scrolled past the longest line */
-        int max_length = 0;
-        int i;
         for (i = 0; i < total_lines; i++)
         {
             int len = strlen(text_buffer[i]);
