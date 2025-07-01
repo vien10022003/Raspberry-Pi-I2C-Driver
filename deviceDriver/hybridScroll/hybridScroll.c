@@ -64,10 +64,10 @@ static atomic_t need_display_update = ATOMIC_INIT(0);
 static void init_default_text(void)
 {
     strcpy(text_buffer[0], "NHOM 3 LOP L01");
-    strcpy(text_buffer[1], "TO QUANG VIEN");
-    strcpy(text_buffer[2], "BUI DUC KHANH");
-    strcpy(text_buffer[3], "NGUYEN THI HONG");
-    strcpy(text_buffer[4], "THAN NHAN CHINH");
+    strcpy(text_buffer[1], "TO QUANG VIEN CT060146");
+    strcpy(text_buffer[2], "BUI DUC KHANH CT060119");
+    strcpy(text_buffer[3], "NGUYEN THI HONG NGAN CT060229");
+    strcpy(text_buffer[4], "THAN NHAN CHINH CT060205");
     strcpy(text_buffer[5], "MINIMAL INTERRUPT");
     strcpy(text_buffer[6], "ULTRA FAST v5.0");
     strcpy(text_buffer[7], "DEFERRED PROCESSING");
