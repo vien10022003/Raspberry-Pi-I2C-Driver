@@ -25,6 +25,7 @@ MODULE_PARM_DESC(scroll_text, "Text to scroll vertically");
 // Workqueue for animation
 static struct workqueue_struct *scroll_wq;
 static struct delayed_work scroll_work;
+static struct delayed_work horizontal_scroll_work; // Add horizontal scroll work
 static bool stop_scrolling = false;
 
 // OLED display parameters
@@ -34,9 +35,10 @@ static bool stop_scrolling = false;
 #define CHAR_HEIGHT 8
 #define MAX_CHARS_PER_LINE 16 // 128/8 = 16 characters per line
 #define MAX_LINES 8           // 64/8 = 8 lines on the display
+#define MAX_TEXT_LENGTH 64    // Maximum text length per line for storage
 
 // Text buffer to store multiple lines
-static char text_buffer[MAX_LINES][MAX_CHARS_PER_LINE + 1]; // +1 for null terminator
+static char text_buffer[MAX_LINES][MAX_TEXT_LENGTH + 1]; // +1 for null terminator
 
 // Scrolling control variables
 static int scroll_direction = 0;  // 0: stopped, 1: down, -1: up
@@ -45,6 +47,8 @@ static int scroll_interval = 500; // ms between scroll updates
 static int virtual_position = 0;  // Virtual position in the text buffer
 static int total_lines = 0;       // Total number of lines in the buffer
 static bool scrolling_enabled = false;
+static int horizontal_offset = 0;            // Horizontal offset for selected line
+static bool horizontal_auto_enabled = false; // Auto horizontal scrolling
 
 // For sysfs
 static struct kobject *scroll_kobj;
@@ -62,6 +66,10 @@ static ssize_t display_text_show(struct kobject *kobj, struct kobj_attribute *at
 static ssize_t display_text_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
 static ssize_t manual_scroll_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
 static ssize_t manual_scroll_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
+static ssize_t horizontal_shift_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+static ssize_t horizontal_shift_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
+static ssize_t horizontal_auto_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+static ssize_t horizontal_auto_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
 
 // Define sysfs attributes
 static struct kobj_attribute scroll_direction_attribute =
@@ -76,6 +84,10 @@ static struct kobj_attribute display_text_attribute =
     __ATTR(text, 0664, display_text_show, display_text_store);
 static struct kobj_attribute manual_scroll_attribute =
     __ATTR(scroll, 0664, manual_scroll_show, manual_scroll_store);
+static struct kobj_attribute horizontal_shift_attribute =
+    __ATTR(horizontal_shift, 0664, horizontal_shift_show, horizontal_shift_store);
+static struct kobj_attribute horizontal_auto_attribute =
+    __ATTR(horizontal_auto, 0664, horizontal_auto_show, horizontal_auto_store);
 
 // Attribute group
 static struct attribute *attrs[] = {
@@ -84,7 +96,9 @@ static struct attribute *attrs[] = {
     &scroll_interval_attribute.attr,
     &scroll_enable_attribute.attr,
     &display_text_attribute.attr,
-    &manual_scroll_attribute.attr, // Add the new attribute
+    &manual_scroll_attribute.attr,
+    &horizontal_shift_attribute.attr,
+    &horizontal_auto_attribute.attr, // Add new attribute
     NULL,
 };
 
@@ -189,6 +203,25 @@ static void display_string_with_inversion(const char *str, int x, int y, bool in
     }
 }
 
+// Function to display a string with horizontal offset
+static void display_string_with_offset(const char *str, int x, int y, bool inverted, int offset)
+{
+    int i;
+    int curr_x = x;
+    int str_len = strlen(str);
+
+    // Skip characters based on offset
+    for (i = offset; i < str_len && str[i] != '\0'; i++)
+    {
+        // Check if we've reached the end of the display width
+        if (curr_x + CHAR_WIDTH > OLED_WIDTH)
+            break;
+
+        display_char_with_inversion(str[i], curr_x, y, inverted);
+        curr_x += CHAR_WIDTH; // Move to the next character position
+    }
+}
+
 // Original display_char function now calls the new function with inverted=false
 static void display_char(char c, int x, int y)
 {
@@ -207,7 +240,7 @@ static void clear_text_buffer(void)
     int i;
     for (i = 0; i < MAX_LINES; i++)
     {
-        memset(text_buffer[i], 0, MAX_CHARS_PER_LINE + 1);
+        memset(text_buffer[i], 0, MAX_TEXT_LENGTH + 1);
     }
 }
 
@@ -217,8 +250,8 @@ static void set_line(int line_num, const char *text)
     if (line_num < 0 || line_num >= MAX_LINES)
         return;
 
-    strncpy(text_buffer[line_num], text, MAX_CHARS_PER_LINE);
-    text_buffer[line_num][MAX_CHARS_PER_LINE] = '\0'; // Ensure null termination
+    strncpy(text_buffer[line_num], text, MAX_TEXT_LENGTH);
+    text_buffer[line_num][MAX_TEXT_LENGTH] = '\0'; // Ensure null termination
 }
 
 // Function to display the entire text buffer on the OLED
@@ -247,17 +280,49 @@ static void update_display_from_position(void)
     {
         int buffer_line = (virtual_position + i) % total_lines;
 
-        // First line (selected line) is displayed inverted
+        // First line (selected line) is displayed inverted with horizontal offset
         if (i == 0)
         {
-            display_string_with_inversion(text_buffer[buffer_line], 0, i * CHAR_HEIGHT, true);
-            printk(KERN_INFO "VerticalScroll: Selected line %d: %s\n", buffer_line, text_buffer[buffer_line]);
+            display_string_with_offset(text_buffer[buffer_line], 0, i * CHAR_HEIGHT, true, horizontal_offset);
+            printk(KERN_INFO "VerticalScroll: Selected line %d: %s (offset: %d)\n",
+                   buffer_line, text_buffer[buffer_line], horizontal_offset);
         }
         else
         {
             display_string(text_buffer[buffer_line], 0, i * CHAR_HEIGHT);
         }
     }
+}
+
+// Function to clear only the first line (selected line)
+static void clear_first_line(void)
+{
+    int j;
+
+    // Clear only the first page (first line)
+    SSD1306_Write(true, 0xB0); // Set page address to 0
+    SSD1306_Write(true, 0x00); // Set lower column address
+    SSD1306_Write(true, 0x10); // Set higher column address
+
+    for (j = 0; j < 128; j++) // 128 columns
+    {
+        SSD1306_Write(false, 0x00); // Clear each pixel
+    }
+}
+
+// Function to update only the selected line with horizontal offset
+static void update_selected_line_only(void)
+{
+    int selected_line = virtual_position % total_lines;
+
+    // Clear only the first line
+    clear_first_line();
+
+    // Redraw only the selected line with offset and inversion
+    display_string_with_offset(text_buffer[selected_line], 0, 0, true, horizontal_offset);
+
+    printk(KERN_INFO "VerticalScroll: Updated selected line %d with offset %d\n",
+           selected_line, horizontal_offset);
 }
 
 // Work queue handler function for scrolling
@@ -280,6 +345,33 @@ static void scroll_work_handler(struct work_struct *work)
 
         // Re-queue the work
         queue_delayed_work(scroll_wq, &scroll_work, msecs_to_jiffies(scroll_interval));
+    }
+}
+
+// Work queue handler for automatic horizontal scrolling
+static void horizontal_scroll_work_handler(struct work_struct *work)
+{
+    if (horizontal_auto_enabled)
+    {
+        int selected_line = virtual_position % total_lines;
+        int str_len = strlen(text_buffer[selected_line]);
+        int max_offset = str_len - MAX_CHARS_PER_LINE;
+
+        if (max_offset < 0)
+            max_offset = 0;
+
+        // Auto increment horizontal offset
+        horizontal_offset++;
+
+        // Wrap around if we exceed the maximum offset
+        if (horizontal_offset > max_offset)
+            horizontal_offset = 0;
+
+        // Update only the selected line
+        update_selected_line_only();
+
+        // Re-queue the horizontal scroll work with 500ms interval
+        queue_delayed_work(scroll_wq, &horizontal_scroll_work, msecs_to_jiffies(500));
     }
 }
 
@@ -458,23 +550,118 @@ static void scroll_down(void)
     printk(KERN_INFO "VerticalScroll: Manually scrolled down to position %d\n", virtual_position);
 }
 
+// Horizontal shift sysfs handlers
+static ssize_t horizontal_shift_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    int selected_line = virtual_position % total_lines;
+    int max_offset = strlen(text_buffer[selected_line]) - MAX_CHARS_PER_LINE;
+    if (max_offset < 0)
+        max_offset = 0;
+
+    return sprintf(buf, "Horizontal offset: %d (max: %d)\nLine: %s\nWrite '1' to shift left\n",
+                   horizontal_offset, max_offset, text_buffer[selected_line]);
+}
+
+static ssize_t horizontal_shift_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    int shift_value;
+    int selected_line = virtual_position % total_lines;
+    int str_len = strlen(text_buffer[selected_line]);
+    int max_offset = str_len - MAX_CHARS_PER_LINE;
+
+    if (max_offset < 0)
+        max_offset = 0;
+
+    if (sscanf(buf, "%d", &shift_value) != 1)
+        return -EINVAL;
+
+    if (shift_value == 1)
+    {
+        // Shift left (increase offset)
+        horizontal_offset++;
+
+        // Wrap around if we exceed the maximum offset
+        if (horizontal_offset > max_offset)
+            horizontal_offset = 0;
+
+        // Update only the selected line (much faster)
+        update_selected_line_only();
+
+        printk(KERN_INFO "VerticalScroll: Horizontal shift - offset now: %d\n", horizontal_offset);
+    }
+    else
+    {
+        return -EINVAL; // Only accept value 1
+    }
+
+    return count;
+}
+
+// Horizontal auto scroll sysfs handlers
+static ssize_t horizontal_auto_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    return sprintf(buf, "%d\n", horizontal_auto_enabled ? 1 : 0);
+}
+
+static ssize_t horizontal_auto_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    int enable;
+
+    if (sscanf(buf, "%d", &enable) != 1)
+        return -EINVAL;
+
+    horizontal_auto_enabled = (enable != 0);
+
+    if (horizontal_auto_enabled)
+    {
+        // Start automatic horizontal scrolling with 500ms interval
+        queue_delayed_work(scroll_wq, &horizontal_scroll_work, msecs_to_jiffies(500));
+        printk(KERN_INFO "VerticalScroll: Automatic horizontal scrolling enabled (500ms interval)\n");
+    }
+    else
+    {
+        // Stop automatic horizontal scrolling
+        cancel_delayed_work_sync(&horizontal_scroll_work);
+        printk(KERN_INFO "VerticalScroll: Automatic horizontal scrolling disabled\n");
+    }
+
+    return count;
+}
+
 // Manual scroll sysfs handlers
 static ssize_t manual_scroll_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
     int selected_line = virtual_position % total_lines;
-    return sprintf(buf, "Selected line: %d - %s\nWrite 'up' or 'down' to scroll one line\n",
-                   selected_line, text_buffer[selected_line]);
+    return sprintf(buf, "Selected line: %d - %s\nHorizontal offset: %d\nAuto horizontal: %s\nWrite 'up' or 'down' to scroll one line\n",
+                   selected_line, text_buffer[selected_line], horizontal_offset,
+                   horizontal_auto_enabled ? "ON" : "OFF");
 }
 
 static ssize_t manual_scroll_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
 {
     if (strncmp(buf, "up", 2) == 0)
     {
+        horizontal_offset = 0; // Reset horizontal offset when changing lines
+        // Stop auto horizontal scrolling temporarily when manually scrolling
+        cancel_delayed_work_sync(&horizontal_scroll_work);
         scroll_up();
+        // Restart auto horizontal if it was enabled
+        if (horizontal_auto_enabled)
+        {
+            queue_delayed_work(scroll_wq, &horizontal_scroll_work, msecs_to_jiffies(500));
+        }
     }
     else if (strncmp(buf, "down", 4) == 0)
     {
+        horizontal_offset = 0; // Reset horizontal offset when changing lines
+        // Stop auto horizontal scrolling temporarily when manually scrolling
+        cancel_delayed_work_sync(&horizontal_scroll_work);
         scroll_down();
+        // Restart auto horizontal if it was enabled
+        if (horizontal_auto_enabled)
+        {
+            queue_delayed_work(scroll_wq, &horizontal_scroll_work, msecs_to_jiffies(500));
+        }
     }
     else
     {
@@ -492,20 +679,20 @@ static int __init vertical_scroll_init(void)
     // Clear the text buffer
     clear_text_buffer();
 
-    // Populate the buffer with 8 lines of text
-    set_line(0, "LAP TRINH DRIVE");
-    set_line(1, "C601");
-    set_line(2, "NHOM 3");
-    set_line(3, "CAC THANH VIEN TRONG NHOM");
-    set_line(4, "BUI DUC KHANH CT060119");
-    set_line(5, "NGUYEN THI HONG NGAN CT060229");
-    set_line(6, "TO QUANG VIEN CT060146");
-    set_line(7, "THAN NHAN CHINH CT060205");
+    // Populate the buffer with 8 lines of text (now with full text)
+    set_line(0, "LAP TRINH DRIVER KERNEL");
+    set_line(1, "C601 - HOC VIEN KY THUAT MAT MA");
+    set_line(2, "NHOM 3 - BAI CUOI KY");
+    set_line(3, "CAC THANH VIEN TRONG NHOM GOM:");
+    set_line(4, "BUI DUC KHANH - CT060119");
+    set_line(5, "NGUYEN THI HONG NGAN - CT060229");
+    set_line(6, "TO QUANG VIEN - CT060146");
+    set_line(7, "THAN NHAN CHINH - CT060205");
 
     total_lines = 8; // Initialize total lines
 
-    // Display all lines on the OLED
-    display_text_buffer();
+    // Display all lines on the OLED (use update function to show highlighting)
+    update_display_from_position();
 
     printk(KERN_INFO "VerticalScroll: Text buffer displayed\n");
 
@@ -519,6 +706,7 @@ static int __init vertical_scroll_init(void)
 
     // Initialize the delayed work
     INIT_DELAYED_WORK(&scroll_work, scroll_work_handler);
+    INIT_DELAYED_WORK(&horizontal_scroll_work, horizontal_scroll_work_handler);
 
     // Create sysfs entries
     scroll_kobj = kobject_create_and_add("oled_scroll", kernel_kobj);
@@ -547,11 +735,13 @@ static void __exit vertical_scroll_exit(void)
     // Set flag to stop scrolling
     stop_scrolling = true;
     scrolling_enabled = false;
+    horizontal_auto_enabled = false;
 
     // Cleanup workqueue
     if (scroll_wq)
     {
         cancel_delayed_work_sync(&scroll_work);
+        cancel_delayed_work_sync(&horizontal_scroll_work);
         destroy_workqueue(scroll_wq);
     }
 
