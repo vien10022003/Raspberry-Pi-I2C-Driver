@@ -86,6 +86,8 @@ while true; do
             ;;
         "0")
             echo "Exiting OLED control program..."
+            echo "Unloading modules..."
+            sudo rmmod verticalScrollText
             echo "Goodbye!"
             exit 0
             ;;
