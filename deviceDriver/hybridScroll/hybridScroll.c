@@ -40,7 +40,7 @@ static int total_lines = 0;
 /* Scroll control variables - sử dụng atomic */
 static atomic_t horizontal_offset = ATOMIC_INIT(0);
 static atomic_t vertical_offset = ATOMIC_INIT(0);
-static int scroll_speed = 500;
+static int scroll_speed = 700;
 static atomic_t auto_scroll_h = ATOMIC_INIT(0); // 0 = OFF, 1 = ON
 static atomic_t auto_scroll_v = ATOMIC_INIT(0);
 static atomic_t module_active = ATOMIC_INIT(1);
