@@ -85,7 +85,7 @@ const uint8_t font_8x8[][8] = {
     // . (index 39)
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x00}};
 
-// Hàm chuyển ký tự thành index font
+// Function to convert character to font index
 int char_to_index(char c)
 {
     if (c >= 'A' && c <= 'Z')
