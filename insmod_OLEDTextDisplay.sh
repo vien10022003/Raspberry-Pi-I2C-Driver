@@ -73,7 +73,10 @@ while true; do
             ;;
         "ad")
             echo "Enabling auto scroll down..."
+            echo 0 | sudo tee /sys/kernel/oled_scroll/enable > /dev/null
+            sleep 0.1
             echo 1 | sudo tee /sys/kernel/oled_scroll/direction > /dev/null
+            sleep 0.1
             echo 1 | sudo tee /sys/kernel/oled_scroll/enable > /dev/null
             echo "✓ Auto scroll down enabled!"
             ;;
