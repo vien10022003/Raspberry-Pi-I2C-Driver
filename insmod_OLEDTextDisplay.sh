@@ -14,6 +14,10 @@ sudo insmod deviceDriver/OLED_TextDisplay/verticalScrollText.ko
 echo "Setting execute permissions for shell scripts..."
 chmod +x deviceDriver/OLED_TextDisplay/*.sh
 
+# Change to OLED_TextDisplay directory
+echo "Changing to OLED_TextDisplay directory..."
+cd deviceDriver/OLED_TextDisplay
+
 echo "OLED Text Display modules loaded successfully!"
 echo "Available sysfs controls:"
 echo "  /sys/kernel/oled_scroll/scroll"
@@ -22,7 +26,7 @@ echo "  /sys/kernel/oled_scroll/horizontal_auto"
 echo "  /sys/kernel/oled_scroll/enable"
 echo "  /sys/kernel/oled_scroll/direction"
 echo ""
-echo "Available shell scripts in deviceDriver/OLED_TextDisplay/:"
+echo "Available shell scripts in current directory:"
 echo "  ./up.sh - Scroll up one line"
 echo "  ./down.sh - Scroll down one line"
 echo "  ./shift.sh - Shift selected line left"
@@ -30,3 +34,5 @@ echo "  ./autoShift.sh - Enable auto horizontal scroll"
 echo "  ./stopAutoShift.sh - Disable auto horizontal scroll"
 echo "  ./autoDown.sh - Enable auto vertical scroll down"
 echo "  ./stopAutoDown.sh - Disable auto vertical scroll"
+echo ""
+echo "You are now in the OLED_TextDisplay directory. You can run the scripts directly!"
