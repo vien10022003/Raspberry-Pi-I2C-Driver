@@ -23,8 +23,8 @@ extern void SSD1306_Write(bool is_cmd, unsigned char data);
 #define OLED_HEIGHT 64
 #define CHAR_WIDTH 8
 #define CHAR_HEIGHT 8
-#define MAX_CHARS_PER_LINE 16
-#define MAX_LINES 8
+#define MAX_CHARS_PER_LINE 25
+#define MAX_LINES 12
 
 /* Key event structure for deferred processing */
 struct key_event
@@ -64,15 +64,19 @@ static atomic_t need_display_update = ATOMIC_INIT(0);
 static void init_default_text(void)
 {
     strcpy(text_buffer[0], "NHOM 3 LOP L01");
-    strcpy(text_buffer[1], "TO QUANG VIEN CT060146");
-    strcpy(text_buffer[2], "BUI DUC KHANH CT060119");
-    strcpy(text_buffer[3], "NGUYEN THI HONG NGAN CT060229");
-    strcpy(text_buffer[4], "THAN NHAN CHINH CT060205");
-    strcpy(text_buffer[5], "MINIMAL INTERRUPT");
-    strcpy(text_buffer[6], "ULTRA FAST v5.0");
-    strcpy(text_buffer[7], "DEFERRED PROCESSING");
+    strcpy(text_buffer[1], "");
+    strcpy(text_buffer[2], "TO QUANG VIEN");
+    strcpy(text_buffer[3], "CT060146");
+    strcpy(text_buffer[4], "BUI DUC KHANH");
+    strcpy(text_buffer[5], "CT060119");
+    strcpy(text_buffer[6], "NGUYEN THI HONG NGAN");
+    strcpy(text_buffer[7], "CT060229");
+    strcpy(text_buffer[8], "THAN NHAN CHINH");
+    strcpy(text_buffer[9], "CT060205");
+    strcpy(text_buffer[10], "");
+    strcpy(text_buffer[11], "HYBRID SCROLL V5.0");
 
-    total_lines = 8;
+    total_lines = 12;
     max_line_length = 0;
 
     for (int i = 0; i < total_lines; i++)
