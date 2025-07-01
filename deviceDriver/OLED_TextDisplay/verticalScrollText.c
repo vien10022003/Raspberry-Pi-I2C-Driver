@@ -681,13 +681,13 @@ static int __init vertical_scroll_init(void)
 
     // Populate the buffer with 8 lines of text (now with full text)
     set_line(0, "LAP TRINH DRIVER KERNEL");
-    set_line(1, "C601 - HOC VIEN KY THUAT MAT MA");
-    set_line(2, "NHOM 3 - BAI CUOI KY");
+    set_line(1, "C601 HOC VIEN KY THUAT MAT MA");
+    set_line(2, "NHOM 3 BAI CUOI KY");
     set_line(3, "CAC THANH VIEN TRONG NHOM GOM:");
-    set_line(4, "BUI DUC KHANH - CT060119");
-    set_line(5, "NGUYEN THI HONG NGAN - CT060229");
-    set_line(6, "TO QUANG VIEN - CT060146");
-    set_line(7, "THAN NHAN CHINH - CT060205");
+    set_line(4, "BUI DUC KHANH CT060119");
+    set_line(5, "NGUYEN THI HONG NGAN CT060229");
+    set_line(6, "TO QUANG VIEN CT060146");
+    set_line(7, "THAN NHAN CHINH CT060205");
 
     total_lines = 8; // Initialize total lines
 
