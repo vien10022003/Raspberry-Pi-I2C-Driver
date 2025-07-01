@@ -40,7 +40,7 @@ static int total_lines = 0;
 /* Scroll control variables - sử dụng atomic */
 static atomic_t horizontal_offset = ATOMIC_INIT(0);
 static atomic_t vertical_offset = ATOMIC_INIT(0);
-static int scroll_speed = 700;
+static int scroll_speed = 800;
 static atomic_t auto_scroll_h = ATOMIC_INIT(0); // 0 = OFF, 1 = ON
 static atomic_t auto_scroll_v = ATOMIC_INIT(0);
 static atomic_t module_active = ATOMIC_INIT(1);
@@ -370,8 +370,8 @@ static void key_work_handler(struct work_struct *work)
         break;
 
     case 19: /* R - reset */
-        atomic_set(&horizontal_offset, 0);
-        atomic_set(&vertical_offset, 0);
+        atomic_set(&auto_scroll_h, 0);
+        atomic_set(&auto_scroll_v, 0);
         atomic_set(&horizontal_offset, 0);
         atomic_set(&vertical_offset, 0);
         printk(KERN_INFO "HybridScroll: Positions reset\n");
