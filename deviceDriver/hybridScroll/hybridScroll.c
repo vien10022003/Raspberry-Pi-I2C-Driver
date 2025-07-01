@@ -372,6 +372,8 @@ static void key_work_handler(struct work_struct *work)
     case 19: /* R - reset */
         atomic_set(&horizontal_offset, 0);
         atomic_set(&vertical_offset, 0);
+        atomic_set(&horizontal_offset, 0);
+        atomic_set(&vertical_offset, 0);
         printk(KERN_INFO "HybridScroll: Positions reset\n");
         break;
     }
