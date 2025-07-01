@@ -2,6 +2,14 @@
 
 echo "Loading OLED Text Display modules..."
 
+# Build I2C driver module
+echo "Building I2C driver..."
+make -C deviceDriver/I2CClientDriver
+
+# Build vertical scroll text module  
+echo "Building vertical scroll text module..."
+make -C deviceDriver/OLED_TextDisplay
+
 # Load I2C driver module
 echo "Loading I2C driver..."
 sudo insmod deviceDriver/I2CClientDriver/I2CDriver.ko
@@ -88,6 +96,7 @@ while true; do
             echo "Exiting OLED control program..."
             echo "Unloading modules..."
             sudo rmmod verticalScrollText
+            sudo rmmod I2CDriver
             echo "Goodbye!"
             exit 0
             ;;
