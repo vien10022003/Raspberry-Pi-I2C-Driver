@@ -32,7 +32,7 @@ static int total_lines = 0;
 /* Scroll control variables */
 static int horizontal_offset = 0;  // Horizontal scroll position
 static int vertical_offset = 0;    // Vertical scroll position (which line to start from)
-static int scroll_speed = 400;     // Speed in milliseconds
+static int scroll_speed = 700;     // Speed in milliseconds
 static bool auto_scroll_h = false; // Auto horizontal scroll - mặc định TẮT
 static bool auto_scroll_v = false; // Auto vertical scroll - mặc định TẮT
 static bool module_active = true;
