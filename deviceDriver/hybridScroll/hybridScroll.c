@@ -40,7 +40,7 @@ static int total_lines = 0;
 /* Scroll control variables - sử dụng atomic */
 static atomic_t horizontal_offset = ATOMIC_INIT(0);
 static atomic_t vertical_offset = ATOMIC_INIT(0);
-static int scroll_speed = 800;
+static int scroll_speed = 2000;
 static atomic_t auto_scroll_h = ATOMIC_INIT(0); // 0 = OFF, 1 = ON
 static atomic_t auto_scroll_v = ATOMIC_INIT(0);
 static atomic_t module_active = ATOMIC_INIT(1);
@@ -239,7 +239,7 @@ static void scroll_work_handler(struct work_struct *work)
     if (atomic_read(&auto_scroll_h))
     {
         int h_offset = atomic_read(&horizontal_offset);
-        h_offset += 1;
+        h_offset += 8;
 
         if (h_offset >= (max_line_length * 8 + 128))
             h_offset = 0;
