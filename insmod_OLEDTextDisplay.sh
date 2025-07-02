@@ -2,6 +2,16 @@
 
 echo "Loading OLED Text Display modules..."
 
+# Remove existing modules if loaded (ignore errors if not loaded)
+echo "Removing existing modules..."
+sudo rmmod verticalScrollText 2>/dev/null || true
+sudo rmmod I2CDriver 2>/dev/null || true
+
+# Clean build directories
+echo "Cleaning build directories..."
+make clean -C deviceDriver/I2CClientDriver
+make clean -C deviceDriver/OLED_TextDisplay
+
 # Build I2C driver module
 echo "Building I2C driver..."
 make -C deviceDriver/I2CClientDriver
@@ -17,14 +27,6 @@ sudo insmod deviceDriver/I2CClientDriver/I2CDriver.ko
 # Load vertical scroll text module
 echo "Loading vertical scroll text module..."
 sudo insmod deviceDriver/OLED_TextDisplay/verticalScrollText.ko
-
-# Grant execute permissions to all shell scripts in OLED_TextDisplay directory
-echo "Setting execute permissions for shell scripts..."
-chmod +x deviceDriver/OLED_TextDisplay/*.sh
-
-# Change to OLED_TextDisplay directory
-echo "Changing to OLED_TextDisplay directory..."
-cd deviceDriver/OLED_TextDisplay
 
 echo "OLED Text Display modules loaded successfully!"
 echo ""
@@ -73,10 +75,7 @@ while true; do
             ;;
         "ad")
             echo "Enabling auto scroll down..."
-            echo 0 | sudo tee /sys/kernel/oled_scroll/enable > /dev/null
-            sleep 0.1
             echo 1 | sudo tee /sys/kernel/oled_scroll/direction > /dev/null
-            sleep 0.1
             echo 1 | sudo tee /sys/kernel/oled_scroll/enable > /dev/null
             echo "✓ Auto scroll down enabled!"
             ;;
@@ -110,7 +109,4 @@ while true; do
     esac
     
     echo ""
-    echo "Press Enter to continue..."
-    read
-    clear
 done
